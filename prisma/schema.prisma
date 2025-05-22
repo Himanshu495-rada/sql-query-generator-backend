@@ -1,0 +1,139 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Database type enum
+enum DatabaseType {
+  POSTGRESQL
+  MYSQL
+  SQLITE
+  MONGODB
+}
+
+// Main user model for authentication
+model User {
+  id                String            @id @default(uuid())
+  email             String            @unique
+  password          String
+  name              String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  connections       Connection[]
+  playgrounds       Playground[]
+  apiKeys           ApiKey[]
+  settings          UserSettings?
+}
+
+// User settings model
+model UserSettings {
+  id                    String        @id @default(uuid())
+  userId                String        @unique
+  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme                 String        @default("light")
+  codeEditorTheme       String        @default("vs-dark")
+  notificationsEnabled  Boolean       @default(true)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+}
+
+// API keys for third-party services
+model ApiKey {
+  id         String     @id @default(uuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service    String     // e.g., "openai", "github"
+  key        String
+  isActive   Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([userId, service])
+}
+
+// Database connection model
+model Connection {
+  id                 String        @id @default(uuid())
+  name               String
+  type               DatabaseType
+  host               String?
+  port               Int?
+  username           String?
+  password           String?
+  database           String?
+  connectionString   String?
+  options            Json?
+  isSample           Boolean       @default(false)
+  isActive           Boolean       @default(true)
+  userId             String
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  playgrounds        PlaygroundConnection[]
+  sandboxDb          SandboxDb?
+}
+
+// Sandbox database model
+model SandboxDb {
+  id                String       @id @default(uuid())
+  name              String
+  connectionId      String       @unique
+  connection        Connection   @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  host              String?
+  port              Int?
+  username          String?
+  password          String?
+  connectionString  String?
+  schema            Json?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  queries           Query[]
+}
+
+// Playground model
+model Playground {
+  id           String                @id @default(uuid())
+  name         String
+  description  String?
+  userId       String
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  connections  PlaygroundConnection[]
+  queries      Query[]
+}
+
+// Junction table for playgrounds and connections
+model PlaygroundConnection {
+  playgroundId   String
+  playground     Playground   @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
+  connectionId   String
+  connection     Connection   @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@id([playgroundId, connectionId])
+}
+
+// Query model
+model Query {
+  id           String      @id @default(uuid())
+  playgroundId String
+  playground   Playground  @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
+  sandboxDbId  String?
+  sandboxDb    SandboxDb?  @relation(fields: [sandboxDbId], references: [id], onDelete: SetNull)
+  prompt       String
+  sqlQuery     String
+  explanation  String?
+  result       Json?
+  error        String?
+  executionTime Int?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+} 
