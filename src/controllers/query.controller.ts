@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import OpenAI from 'openai';
+import azureOpenAIClient from '../utils/azureOpenai';
 import { prisma } from '../index';
 import { ApiError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
@@ -8,9 +9,12 @@ import * as databaseService from '../services/database.service';
 import { AIGeneratedQuery } from '../utils/types';
 
 // Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Use either regular OpenAI or Azure OpenAI based on environment configuration
+const openai = process.env.USE_AZURE_OPENAI === 'true' 
+  ? azureOpenAIClient
+  : new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
 
 // Generate SQL from natural language prompt
 export const generateQuery = async (
@@ -498,7 +502,9 @@ const generateSqlWithOpenAI = async (
 
     // Call OpenAI API
     const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',  // or 'gpt-4' for more complex queries
+      model: process.env.USE_AZURE_OPENAI === 'true' 
+        ? process.env.AZURE_OPENAI_MODEL_NAME || 'gpt-4o-mini'
+        : 'gpt-3.5-turbo',
       messages: messages as any,
       temperature: 0.2,        // Lower temperature for more deterministic output
       max_tokens: 1000,

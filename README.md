@@ -43,7 +43,7 @@ JWT_SECRET=your_jwt_secret_key_here
 TOKEN_EXPIRATION=8h
 
 # OpenAI API
-OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_KEY=your_openai_api_key
 
 # Sandbox settings
 SANDBOX_DB_PREFIX=sandbox_
@@ -51,6 +51,15 @@ SANDBOX_DB_HOST=localhost
 SANDBOX_DB_PORT=5432
 SANDBOX_DB_USER=sandbox_user
 SANDBOX_DB_PASSWORD=sandbox_password
+
+# Azure OpenAI API (Optional)
+# See AZURE_OPENAI_SETUP.md for detailed setup instructions
+USE_AZURE_OPENAI=true
+AZURE_OPENAI_ENDPOINT=your_azure_openai_endpoint
+AZURE_OPENAI_API_KEY=your_azure_openai_api_key
+AZURE_OPENAI_DEPLOYMENT=your_deployment_name
+AZURE_OPENAI_MODEL_NAME=your_model_name
+AZURE_OPENAI_API_VERSION=2024-04-01-preview
 ```
 
 4. Generate Prisma client:

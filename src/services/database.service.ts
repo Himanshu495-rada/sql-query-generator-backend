@@ -469,15 +469,9 @@ const getPostgresSchema = async (connection: Pool): Promise<DatabaseSchema> => {
         column_name, 
         data_type, 
         is_nullable = 'YES' as is_nullable,
-        column_default,
-        pg_get_expr(d.adbin, d.adrelid) as default_value
+        column_default
       FROM 
-        information_schema.columns c
-      LEFT JOIN
-        pg_catalog.pg_attrdef d ON 
-          (c.table_schema = d.adrelid::regclass::text::text::split_part AND
-           c.table_name = d.adrelid::regclass::text::text::split_part AND 
-           c.ordinal_position = d.adnum)
+        information_schema.columns
       WHERE 
         table_name = $1 AND 
         table_schema = $2
@@ -557,7 +551,7 @@ const getPostgresSchema = async (connection: Pool): Promise<DatabaseSchema> => {
       name: col.column_name,
       type: col.data_type,
       nullable: col.is_nullable,
-      defaultValue: col.default_value,
+      defaultValue: col.column_default,
       isPrimaryKey: primaryKeys.includes(col.column_name),
       isForeignKey: fkResult.rows.some(fk => fk.column_name === col.column_name),
     }));
