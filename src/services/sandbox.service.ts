@@ -285,13 +285,37 @@ const createSqliteSandboxDb = async (
  * Generate a PostgreSQL CREATE TABLE query from table info
  */
 const generatePostgresCreateTableQuery = (table: TableInfo): string => {
+  // First create any needed sequences for auto-incrementing columns
+  let sequenceQueries = '';
+  
+  // Identify columns that need sequences (likely auto-increment/serial columns)
+  const columnsNeedingSequences = table.columns.filter(col => 
+    col.defaultValue?.includes('nextval') || 
+    col.type.toLowerCase().includes('serial')
+  );
+  
+  // Generate sequence creation statements
+  for (const col of columnsNeedingSequences) {
+    const sequenceName = `${table.name}_${col.name}_seq`;
+    sequenceQueries += `CREATE SEQUENCE IF NOT EXISTS "${table.schema || 'public'}"."${sequenceName}";\n`;
+  }
+  
+  // Generate main table creation query
   const columns = table.columns.map(col => {
-    const nullable = col.nullable ? 'NULL' : 'NOT NULL';
-    const defaultValue = col.defaultValue ? `DEFAULT ${col.defaultValue}` : '';
+    let nullable = col.nullable ? 'NULL' : 'NOT NULL';
+    let defaultValue = col.defaultValue ? `DEFAULT ${col.defaultValue}` : '';
+    
+    // Replace nextval references with our explicitly created sequences
+    if (defaultValue.includes('nextval')) {
+      const sequenceName = `${table.name}_${col.name}_seq`;
+      defaultValue = `DEFAULT nextval('"${table.schema || 'public'}"."${sequenceName}"')`;
+    }
+    
     return `"${col.name}" ${mapToPostgresType(col.type)} ${nullable} ${defaultValue}`.trim();
   });
 
-  let query = `CREATE TABLE "${table.schema || 'public'}"."${table.name}" (\n`;
+  let query = sequenceQueries;
+  query += `CREATE TABLE "${table.schema || 'public'}"."${table.name}" (\n`;
   query += columns.join(',\n');
 
   // Add primary key

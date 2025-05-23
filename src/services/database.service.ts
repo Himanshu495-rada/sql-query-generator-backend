@@ -463,20 +463,33 @@ const getPostgresSchema = async (connection: Pool): Promise<DatabaseSchema> => {
   
   // Process each table
   for (const table of tablesResult.rows) {
-    // Query to get columns for this table
+    // Query to get columns for this table with improved data type detection
     const columnsQuery = `
       SELECT 
-        column_name, 
-        data_type, 
-        is_nullable = 'YES' as is_nullable,
-        column_default
+        c.column_name, 
+        c.data_type, 
+        c.is_nullable = 'YES' as is_nullable,
+        c.column_default,
+        (
+          SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
+          FROM pg_catalog.pg_attribute a
+          WHERE a.attrelid = (
+            SELECT pg_catalog.pg_class.oid 
+            FROM pg_catalog.pg_class 
+            JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace
+            WHERE pg_catalog.pg_class.relname = c.table_name 
+            AND pg_catalog.pg_namespace.nspname = c.table_schema
+          )
+          AND a.attname = c.column_name
+          AND NOT a.attisdropped
+        ) as full_data_type
       FROM 
-        information_schema.columns
+        information_schema.columns c
       WHERE 
-        table_name = $1 AND 
-        table_schema = $2
+        c.table_name = $1 AND 
+        c.table_schema = $2
       ORDER BY 
-        ordinal_position
+        c.ordinal_position
     `;
     
     const columnsResult = await connection.query(columnsQuery, [
@@ -547,14 +560,20 @@ const getPostgresSchema = async (connection: Pool): Promise<DatabaseSchema> => {
     ]);
     
     // Map columns to our schema format
-    const columns: ColumnInfo[] = columnsResult.rows.map(col => ({
-      name: col.column_name,
-      type: col.data_type,
-      nullable: col.is_nullable,
-      defaultValue: col.column_default,
-      isPrimaryKey: primaryKeys.includes(col.column_name),
-      isForeignKey: fkResult.rows.some(fk => fk.column_name === col.column_name),
-    }));
+    const columns: ColumnInfo[] = columnsResult.rows.map(col => {
+      // Check if this is an auto-incrementing column using a sequence
+      const isSerialColumn = col.full_data_type?.includes('serial') || 
+                           (col.column_default && col.column_default.includes('nextval'));
+      
+      return {
+        name: col.column_name,
+        type: isSerialColumn ? 'serial' : col.data_type,
+        nullable: col.is_nullable,
+        defaultValue: col.column_default,
+        isPrimaryKey: primaryKeys.includes(col.column_name),
+        isForeignKey: fkResult.rows.some(fk => fk.column_name === col.column_name),
+      };
+    });
     
     // Create table info
     const tableInfo: TableInfo = {
