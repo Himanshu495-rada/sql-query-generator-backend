@@ -122,19 +122,30 @@ model PlaygroundConnection {
   @@id([playgroundId, connectionId])
 }
 
-// Query model
+
 model Query {
-  id           String      @id @default(uuid())
-  playgroundId String
-  playground   Playground  @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
-  sandboxDbId  String?
-  sandboxDb    SandboxDb?  @relation(fields: [sandboxDbId], references: [id], onDelete: SetNull)
-  prompt       String
-  sqlQuery     String
-  explanation  String?
-  result       Json?
-  error        String?
+  id            String      @id @default(uuid())
+  userId        String?      // Temporarily optional for migration
+  connectionId  String?      // Temporarily optional for migration
+  playgroundId  String?     // Optional
+  playground    Playground? @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
+  sandboxDbId   String?
+  sandboxDb     SandboxDb?  @relation(fields: [sandboxDbId], references: [id], onDelete: SetNull)
+  prompt        String
+  sqlQuery      String
+  explanation   String?
+  result        Json?
+  error         String?
   executionTime Int?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-} 
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Optional: Define relations if you want Prisma to manage them
+  // user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // connection    Connection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+
+  // Optional: Add indexes for performance
+  // @@index([userId])
+  // @@index([connectionId])
+}

@@ -30,31 +30,34 @@ export const generateQuery = async (
       throw new ApiError(401, 'Authentication required');
     }
 
-    const { prompt, playgroundId, connectionId } = req.body;
+    // playgroundId is now optional, enforceDQL can be added for chat context
+    const { prompt, playgroundId, connectionId, enforceDQL } = req.body;
 
     if (!prompt) {
       throw new ApiError(400, 'Prompt is required');
     }
 
-    if (!playgroundId) {
-      throw new ApiError(400, 'Playground ID is required');
-    }
-
+    // connectionId is always required
     if (!connectionId) {
       throw new ApiError(400, 'Connection ID is required');
     }
 
-    // Check if playground exists and belongs to the user
-    const playground = await prisma.playground.findFirst({
-      where: {
-        id: playgroundId,
-        userId,
-      },
-    });
+    let playground = null;
+    if (playgroundId) {
+      // Check if playground exists and belongs to the user (existing logic)
+      playground = await prisma.playground.findFirst({
+        where: {
+          id: playgroundId,
+          userId,
+        },
+      });
 
-    if (!playground) {
-      throw new ApiError(404, 'Playground not found');
-    }
+      if (!playground) {
+        throw new ApiError(404, 'Playground not found or access denied');
+      }
+    } 
+    // If playgroundId is not provided, we assume it's from the chat context
+    // and don't need to validate the playground itself.
 
     // Check if connection exists and belongs to the user
     const connection = await prisma.connection.findFirst({
@@ -69,16 +72,14 @@ export const generateQuery = async (
     });
 
     if (!connection) {
-      throw new ApiError(404, 'Connection not found');
+      throw new ApiError(404, 'Connection not found or access denied');
     }
 
-    // Get database schema for context
+    // Get database schema for context (existing logic)
     let schema = null;
-
     if (connection.sandboxDb?.schema) {
       schema = connection.sandboxDb.schema;
     } else {
-      // Connect to the database to get schema
       const config = {
         type: connection.type,
         host: typeof connection.host === 'string' ? connection.host : undefined,
@@ -89,7 +90,6 @@ export const generateQuery = async (
         connectionString: typeof connection.connectionString === 'string' ? connection.connectionString : undefined,
         options: connection.options as any,
       };
-
       try {
         await databaseService.connectToDatabase(connectionId, config);
         schema = await databaseService.getDatabaseSchema(connectionId);
@@ -100,39 +100,82 @@ export const generateQuery = async (
       }
     }
 
-    // Get previous queries from this playground for context
-    const previousQueries = await prisma.query.findMany({
-      where: { playgroundId },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      select: {
-        prompt: true,
-        sqlQuery: true,
-      },
-    });
+    let previousQueries: { prompt: string; sqlQuery: string }[] = [];
+
+    if (playgroundId) {
+      // Get previous queries from this playground for context
+      previousQueries = await prisma.query.findMany({
+        where: { playgroundId },
+        orderBy: { createdAt: 'desc' },
+        take: 5, // Keep taking 5 for playground context
+        select: {
+          prompt: true,
+          sqlQuery: true,
+        },
+      });
+    } else {
+      // Chat context: Get previous queries from today for this user and connection
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+
+      previousQueries = await prisma.query.findMany({
+        where: {
+          userId,
+          connectionId,
+          playgroundId: null, // Ensure these are chat-specific queries
+          createdAt: {
+            gte: startOfToday,
+          },
+        },
+        orderBy: { createdAt: 'asc' }, // Chronological for chat history context
+        take: 10, // Take more for chat context if desired, e.g., 10
+        select: {
+          prompt: true,
+          sqlQuery: true,
+        },
+      });
+    }
 
     // Call OpenAI API to generate SQL
     const generatedQuery = await generateSqlWithOpenAI(prompt, schema, previousQueries, connection.type);
 
+    // TODO: Implement DQL enforcement if enforceDQL is true and !playgroundId
+    if (enforceDQL && !playgroundId) {
+      // Add your DQL validation logic here. For example:
+      // const isDQL = generatedQuery.query.trim().toUpperCase().startsWith('SELECT');
+      // if (!isDQL) {
+      //   throw new ApiError(400, 'Generated query is not a DQL query. Only SELECT statements are allowed in chat.');
+      // }
+      logger.info(`DQL enforcement requested for chat query. Generated query: ${generatedQuery.query}`);
+    }
+
     // Save the query to the database
     const queryId = uuidv4();
-    const query = await prisma.query.create({
-      data: {
-        id: queryId,
-        playgroundId,
-        sandboxDbId: connection.sandboxDb?.id,
-        prompt,
-        sqlQuery: generatedQuery.query,
-        explanation: generatedQuery.explanation,
-      },
+    const queryData: any = {
+      id: queryId,
+      userId, // Store userId for all queries
+      connectionId, // Store connectionId for all queries
+      sandboxDbId: connection.sandboxDb?.id,
+      prompt,
+      sqlQuery: generatedQuery.query,
+      explanation: generatedQuery.explanation,
+    };
+
+    if (playgroundId) {
+      queryData.playgroundId = playgroundId;
+    }
+    // If playgroundId is null, it's a chat query and won't be associated with a playground
+
+    const newQuery = await prisma.query.create({
+      data: queryData,
     });
 
     res.status(201).json({
       success: true,
       data: {
         query: {
-          ...query,
-          result: null,
+          ...newQuery,
+          result: null, // Result is typically null on generation
         },
       },
     });
