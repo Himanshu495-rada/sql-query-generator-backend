@@ -14,6 +14,7 @@ import playgroundRoutes from './routes/playground.routes';
 import queryRoutes from './routes/query.routes';
 import sandboxRoutes from './routes/sandbox.routes';
 import guiBuilderRoutes from './routes/guiBuilder.routes';
+import chatMessageRoutes from './routes/chatMessage.routes';
 
 // Load environment variables
 dotenv.config();
@@ -48,6 +49,7 @@ app.use('/api/playgrounds', playgroundRoutes);
 app.use('/api/queries', queryRoutes);
 app.use('/api/sandbox', sandboxRoutes);
 app.use('/api/gui-builder', guiBuilderRoutes);
+app.use('/api/chat-messages', chatMessageRoutes);
 
 // Apply error handler
 app.use(errorHandler);

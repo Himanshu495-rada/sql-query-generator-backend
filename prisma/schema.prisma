@@ -20,114 +20,114 @@ enum DatabaseType {
 
 // Main user model for authentication
 model User {
-  id                String            @id @default(uuid())
-  email             String            @unique
-  password          String
-  name              String?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  connections       Connection[]
-  playgrounds       Playground[]
-  apiKeys           ApiKey[]
-  settings          UserSettings?
+  id          String        @id @default(uuid())
+  email       String        @unique
+  password    String
+  name        String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  connections Connection[]
+  playgrounds Playground[]
+  apiKeys     ApiKey[]
+  settings    UserSettings?
 }
 
 // User settings model
 model UserSettings {
-  id                    String        @id @default(uuid())
-  userId                String        @unique
-  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  theme                 String        @default("light")
-  codeEditorTheme       String        @default("vs-dark")
-  notificationsEnabled  Boolean       @default(true)
-  sandboxTtlMinutes     Int           @default(60)
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme                String   @default("light")
+  codeEditorTheme      String   @default("vs-dark")
+  notificationsEnabled Boolean  @default(true)
+  sandboxTtlMinutes    Int      @default(60)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 // API keys for third-party services
 model ApiKey {
-  id         String     @id @default(uuid())
-  userId     String
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  service    String     // e.g., "openai", "github"
-  key        String
-  isActive   Boolean    @default(true)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service   String // e.g., "openai", "github"
+  key       String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, service])
 }
 
 // Database connection model
 model Connection {
-  id                 String        @id @default(uuid())
-  name               String
-  type               DatabaseType
-  host               String?
-  port               Int?
-  username           String?
-  password           String?
-  database           String?
-  connectionString   String?
-  options            Json?
-  isSample           Boolean       @default(false)
-  isActive           Boolean       @default(true)
-  userId             String
-  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  playgrounds        PlaygroundConnection[]
-  sandboxDb          SandboxDb?
+  id               String                 @id @default(uuid())
+  name             String
+  type             DatabaseType
+  host             String?
+  port             Int?
+  username         String?
+  password         String?
+  database         String?
+  connectionString String?
+  options          Json?
+  isSample         Boolean                @default(false)
+  isActive         Boolean                @default(true)
+  userId           String
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  playgrounds      PlaygroundConnection[]
+  sandboxDb        SandboxDb?
 }
 
 // Sandbox database model
 model SandboxDb {
-  id                String       @id @default(uuid())
-  name              String
-  connectionId      String       @unique
-  connection        Connection   @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  host              String?
-  port              Int?
-  username          String?
-  password          String?
-  connectionString  String?
-  schema            Json?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
-  queries           Query[]
+  id               String     @id @default(uuid())
+  name             String
+  connectionId     String     @unique
+  connection       Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  host             String?
+  port             Int?
+  username         String?
+  password         String?
+  connectionString String?
+  schema           Json?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  queries          Query[]
 }
 
 // Playground model
 model Playground {
-  id           String                @id @default(uuid())
+  id           String                 @id @default(uuid())
   name         String
   description  String?
   userId       String
-  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
   connections  PlaygroundConnection[]
   queries      Query[]
+  chatMessages ChatMessage[]
 }
 
 // Junction table for playgrounds and connections
 model PlaygroundConnection {
-  playgroundId   String
-  playground     Playground   @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
-  connectionId   String
-  connection     Connection   @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  createdAt      DateTime     @default(now())
+  playgroundId String
+  playground   Playground @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
+  connectionId String
+  connection   Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
 
   @@id([playgroundId, connectionId])
 }
 
-
 model Query {
   id            String      @id @default(uuid())
-  userId        String?      // Temporarily optional for migration
-  connectionId  String?      // Temporarily optional for migration
-  playgroundId  String?     // Optional
+  userId        String? // Temporarily optional for migration
+  connectionId  String? // Temporarily optional for migration
+  playgroundId  String? // Optional
   playground    Playground? @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
   sandboxDbId   String?
   sandboxDb     SandboxDb?  @relation(fields: [sandboxDbId], references: [id], onDelete: SetNull)
@@ -140,12 +140,31 @@ model Query {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
+  chatMessages ChatMessage[] @relation("QueryToChatMessage")
+
   // Optional: Define relations if you want Prisma to manage them
   // user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   // connection    Connection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
-
   // Optional: Add indexes for performance
   // @@index([userId])
   // @@index([connectionId])
+}
+
+model ChatMessage {
+  id           String     @id @default(uuid())
+  playgroundId String
+  playground   Playground @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
+  userId       String
+  sender       String // 'user' or 'ai'
+  message      String
+  sql          String?
+  queryId      String?
+  query        Query?     @relation("QueryToChatMessage", fields: [queryId], references: [id], onDelete: SetNull)
+  results      Json?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([playgroundId])
+  @@index([userId])
 }

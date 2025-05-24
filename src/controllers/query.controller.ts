@@ -157,8 +157,9 @@ export const generateQuery = async (
       connectionId, // Store connectionId for all queries
       sandboxDbId: connection.sandboxDb?.id,
       prompt,
-      sqlQuery: generatedQuery.query,
-      explanation: generatedQuery.explanation,
+      // Format sqlQuery as a JSON string with the required prefix for frontend parsing
+      sqlQuery: `json\n${JSON.stringify({ query: generatedQuery.query, explanation: generatedQuery.explanation }, null, 2)}`,
+      //explanation: generatedQuery.explanation,
     };
 
     if (playgroundId) {
@@ -169,6 +170,30 @@ export const generateQuery = async (
     const newQuery = await prisma.query.create({
       data: queryData,
     });
+
+    // If this is a playground chat, store both user and AI messages in ChatMessage
+    if (playgroundId) {
+      // User message
+      await prisma.chatMessage.create({
+        data: {
+          playgroundId,
+          userId,
+          sender: 'user',
+          message: prompt,
+        },
+      });
+      // AI message
+      await prisma.chatMessage.create({
+        data: {
+          playgroundId,
+          userId,
+          sender: 'ai',
+          message: generatedQuery.explanation || '',
+          sql: generatedQuery.query,
+          queryId: newQuery.id,
+        },
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -218,7 +243,7 @@ export const executeQuery = async (
       throw new ApiError(404, 'Query not found');
     }
     // Check if playground belongs to the user
-    if (query.playground.userId !== userId) {
+    if (!query.playground || query.playground.userId !== userId) {
       throw new ApiError(403, 'Not authorized to execute this query');
     }
     // Use the hybrid query execution logic
@@ -411,7 +436,7 @@ export const deleteQuery = async (
     }
 
     // Check if playground belongs to the user
-    if (query.playground.userId !== userId) {
+    if (!query.playground || query.playground.userId !== userId) {
       throw new ApiError(403, 'Not authorized to delete this query');
     }
 
