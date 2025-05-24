@@ -93,7 +93,25 @@ export const updateProfile = async (
   }
 };
 
-// Update user settings
+// Get user settings
+export const getSettings = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new ApiError(401, 'Authentication required');
+    }
+    const settings = await prisma.userSettings.findUnique({ where: { userId } });
+    res.status(200).json({ success: true, data: { settings } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update user settings (add sandboxTtlMinutes)
 export const updateSettings = async (
   req: Request,
   res: Response,
@@ -101,12 +119,11 @@ export const updateSettings = async (
 ) => {
   try {
     const userId = req.user?.id;
-    
     if (!userId) {
       throw new ApiError(401, 'Authentication required');
     }
 
-    const { theme, codeEditorTheme, notificationsEnabled } = req.body;
+    const { theme, codeEditorTheme, notificationsEnabled, sandboxTtlMinutes } = req.body;
 
     // Check if user has settings
     const existingSettings = await prisma.userSettings.findUnique({
@@ -123,6 +140,7 @@ export const updateSettings = async (
           ...(theme !== undefined && { theme }),
           ...(codeEditorTheme !== undefined && { codeEditorTheme }),
           ...(notificationsEnabled !== undefined && { notificationsEnabled }),
+          ...(sandboxTtlMinutes !== undefined && { sandboxTtlMinutes }),
         },
       });
     } else {
@@ -134,6 +152,7 @@ export const updateSettings = async (
           ...(theme !== undefined && { theme }),
           ...(codeEditorTheme !== undefined && { codeEditorTheme }),
           ...(notificationsEnabled !== undefined && { notificationsEnabled }),
+          ...(sandboxTtlMinutes !== undefined && { sandboxTtlMinutes }),
         },
       });
     }

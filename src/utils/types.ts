@@ -182,4 +182,11 @@ export interface GuiBuilderJoin {
     leftColumn: string;
     rightColumn: string;
   }[];
+}
+
+export type QueryType = 'DQL' | 'DML' | 'DDL' | 'UNKNOWN';
+
+export interface SandboxTableMeta {
+  tableName: string;
+  lastCopied: Date;
 } 

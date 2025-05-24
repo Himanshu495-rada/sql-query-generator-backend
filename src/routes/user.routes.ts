@@ -28,4 +28,7 @@ router.post('/api-keys', userController.createApiKey);
 // Delete an API key
 router.delete('/api-keys/:id', userController.deleteApiKey);
 
+// Get user settings
+router.get('/settings', userController.getSettings);
+
 export default router; 

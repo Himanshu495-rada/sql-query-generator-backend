@@ -131,7 +131,7 @@ const createPostgresSandboxDb = async (
   await databaseService.connectToDatabase(adminConnId, adminConfig);
 
   try {
-    const adminPoolData = await databaseService.executeQuery(
+    await databaseService.executeQuery(
       adminConnId, 
       `CREATE DATABASE ${sandboxName};`
     );
@@ -149,7 +149,7 @@ const createPostgresSandboxDb = async (
     const sandboxConnId = `sandbox_conn_${Date.now()}`;
     await databaseService.connectToDatabase(sandboxConnId, sandboxConfig);
 
-    // Create schema
+    // Create schema and copy data
     try {
       // Create tables
       for (const table of schema.tables) {
@@ -157,14 +157,33 @@ const createPostgresSandboxDb = async (
         if (table.name.startsWith('pg_') || table.name.startsWith('information_schema')) {
           continue;
         }
-
         const createTableQuery = generatePostgresCreateTableQuery(table);
         await databaseService.executeQuery(sandboxConnId, createTableQuery);
-      }
 
-      // Clone sample data if source database is accessible
-      if (sourceConfig.host && sourceConfig.database) {
-        // TODO: Implement data cloning logic for sample data
+        // Copy rows from source to sandbox
+        const sourceConnId = `source_conn_${Date.now()}`;
+        await databaseService.connectToDatabase(sourceConnId, sourceConfig);
+        try {
+          const selectResult = await databaseService.executeQuery(sourceConnId, `SELECT * FROM "${table.name}"`);
+          if (selectResult.rows.length > 0) {
+            const columns = Object.keys(selectResult.rows[0]);
+            // Batch insert for large tables
+            const batchSize = 1000;
+            for (let i = 0; i < selectResult.rows.length; i += batchSize) {
+              const batch = selectResult.rows.slice(i, i + batchSize);
+              const values = batch.map(row => {
+                return '(' + columns.map(col => {
+                  if (row[col] === null) return 'NULL';
+                  return `'${String(row[col]).replace(/'/g, "''")}'`;
+                }).join(',') + ')';
+              }).join(',');
+              const insertQuery = `INSERT INTO "${table.name}" (${columns.map(col => `"${col}"`).join(',')}) VALUES ${values}`;
+              await databaseService.executeQuery(sandboxConnId, insertQuery);
+            }
+          }
+        } finally {
+          await databaseService.closeDatabaseConnection(sourceConnId);
+        }
       }
     } finally {
       await databaseService.closeDatabaseConnection(sandboxConnId);
@@ -199,7 +218,7 @@ const createMySqlSandboxDb = async (
   try {
     await databaseService.executeQuery(
       adminConnId, 
-      `CREATE DATABASE IF NOT EXISTS ${sandboxName};`
+      `CREATE DATABASE IF NOT EXISTS \`${sandboxName}\`;`
     );
 
     // Create a new connection to the sandbox database
@@ -215,17 +234,36 @@ const createMySqlSandboxDb = async (
     const sandboxConnId = `sandbox_conn_${Date.now()}`;
     await databaseService.connectToDatabase(sandboxConnId, sandboxConfig);
 
-    // Create schema
+    // Create schema and copy data
     try {
       // Create tables
       for (const table of schema.tables) {
         const createTableQuery = generateMySqlCreateTableQuery(table);
         await databaseService.executeQuery(sandboxConnId, createTableQuery);
-      }
 
-      // Clone sample data if source database is accessible
-      if (sourceConfig.host && sourceConfig.database) {
-        // TODO: Implement data cloning logic for sample data
+        // Copy rows from source to sandbox
+        const sourceConnId = `source_conn_${Date.now()}`;
+        await databaseService.connectToDatabase(sourceConnId, sourceConfig);
+        try {
+          const selectResult = await databaseService.executeQuery(sourceConnId, `SELECT * FROM \`${table.name}\``);
+          if (selectResult.rows.length > 0) {
+            const columns = Object.keys(selectResult.rows[0]);
+            const batchSize = 1000;
+            for (let i = 0; i < selectResult.rows.length; i += batchSize) {
+              const batch = selectResult.rows.slice(i, i + batchSize);
+              const values = batch.map(row => {
+                return '(' + columns.map(col => {
+                  if (row[col] === null) return 'NULL';
+                  return `'${String(row[col]).replace(/'/g, "''")}'`;
+                }).join(',') + ')';
+              }).join(',');
+              const insertQuery = `INSERT INTO \`${table.name}\` (${columns.map(col => `\`${col}\``).join(',')}) VALUES ${values}`;
+              await databaseService.executeQuery(sandboxConnId, insertQuery);
+            }
+          }
+        } finally {
+          await databaseService.closeDatabaseConnection(sourceConnId);
+        }
       }
     } finally {
       await databaseService.closeDatabaseConnection(sandboxConnId);
@@ -238,47 +276,63 @@ const createMySqlSandboxDb = async (
 };
 
 /**
- * Create a SQLite sandbox database
+ * Create a SQLite sandbox database (in-memory, do not store file)
  */
 const createSqliteSandboxDb = async (
   sandboxName: string, 
   sourceConfig: DatabaseConfig,
   schema: DatabaseSchema
 ): Promise<DatabaseConfig> => {
-  // Create SQLite database file
-  const sandboxDir = path.resolve('./sandbox');
-  if (!fs.existsSync(sandboxDir)) {
-    fs.mkdirSync(sandboxDir, { recursive: true });
-  }
-
-  const dbPath = path.join(sandboxDir, `${sandboxName}.db`);
+  // Use in-memory SQLite DB for sandbox
   const sandboxConfig: DatabaseConfig = {
     type: DatabaseType.SQLITE,
-    connectionString: dbPath,
+    database: ':memory:',
   };
 
-  // Create the database
-  const db = await sqliteOpen({
-    filename: dbPath,
-    driver: sqlite3.Database,
-  });
+  const sandboxConnId = `sandbox_conn_${Date.now()}`;
+  await databaseService.connectToDatabase(sandboxConnId, sandboxConfig);
 
   try {
-    // Create tables
+    // Create tables and copy data
     for (const table of schema.tables) {
       const createTableQuery = generateSqliteCreateTableQuery(table);
-      await db.exec(createTableQuery);
-    }
+      await databaseService.executeQuery(sandboxConnId, createTableQuery);
 
-    // Clone sample data if source database is accessible
-    if (sourceConfig.connectionString || sourceConfig.database) {
-      // TODO: Implement data cloning logic for sample data
+      // Copy rows from source to sandbox
+      const sourceConnId = `source_conn_${Date.now()}`;
+      await databaseService.connectToDatabase(sourceConnId, sourceConfig);
+      try {
+        const selectResult = await databaseService.executeQuery(sourceConnId, `SELECT * FROM "${table.name}"`);
+        if (selectResult.rows.length > 0) {
+          const columns = Object.keys(selectResult.rows[0]);
+          const batchSize = 1000;
+          for (let i = 0; i < selectResult.rows.length; i += batchSize) {
+            const batch = selectResult.rows.slice(i, i + batchSize);
+            const values = batch.map(row => {
+              return '(' + columns.map(col => {
+                if (row[col] === null) return 'NULL';
+                return `'${String(row[col]).replace(/'/g, "''")}'`;
+              }).join(',') + ')';
+            }).join(',');
+            try {
+              // Use INSERT OR IGNORE to skip rows that would violate unique constraints
+              const insertQuery = `INSERT OR IGNORE INTO "${table.name}" (${columns.map(col => `"${col}"`).join(',')}) VALUES ${values}`;
+              await databaseService.executeQuery(sandboxConnId, insertQuery);
+            } catch (error: any) {
+              logger.warn(`Error inserting data into sandbox table ${table.name}: ${error.message}`);
+              // Continue with next batch even if this one fails
+              continue;
+            }
+          }
+        }
+      } finally {
+        await databaseService.closeDatabaseConnection(sourceConnId);
+      }
     }
+    return sandboxConfig;
   } finally {
-    await db.close();
+    await databaseService.closeDatabaseConnection(sandboxConnId);
   }
-
-  return sandboxConfig;
 };
 
 /**
@@ -337,15 +391,14 @@ const generateMySqlCreateTableQuery = (table: TableInfo): string => {
     return `\`${col.name}\` ${mapToMySqlType(col.type)} ${nullable} ${defaultValue}`.trim();
   });
 
-  let query = `CREATE TABLE \`${table.name}\` (\n`;
-  query += columns.join(',\n');
+  let query = `CREATE TABLE \`${table.name}\` (\\n${columns.join(',\\n')}\\n  `;
 
   // Add primary key
   if (table.primaryKey && table.primaryKey.length > 0) {
-    query += `,\nPRIMARY KEY (\`${table.primaryKey.join('`, `')}\`)`;
+    query += `,\\nPRIMARY KEY (${table.primaryKey.map(pk => `\`${pk}\``).join(', ')})`;
   }
 
-  query += '\n);';
+  query += '\\n);';
   return query;
 };
 
@@ -617,7 +670,9 @@ const dropMySqlSandboxDb = async (dbName: string): Promise<void> => {
  * Drop a SQLite sandbox database
  */
 const dropSqliteSandboxDb = async (dbPath: string): Promise<void> => {
-  // For SQLite, we just delete the file
+  // For in-memory SQLite, nothing to do
+  if (dbPath === ':memory:') return;
+  // For file-based, delete the file
   if (fs.existsSync(dbPath)) {
     fs.unlinkSync(dbPath);
   }

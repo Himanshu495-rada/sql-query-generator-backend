@@ -7,6 +7,7 @@ import { ApiError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import * as databaseService from '../services/database.service';
 import { AIGeneratedQuery } from '../utils/types';
+import { executeHybridQuery } from '../services/hybridQuery.service';
 
 // Initialize OpenAI client
 // Use either regular OpenAI or Azure OpenAI based on environment configuration
@@ -80,12 +81,12 @@ export const generateQuery = async (
       // Connect to the database to get schema
       const config = {
         type: connection.type,
-        host: connection.host,
-        port: connection.port,
-        username: connection.username,
-        password: connection.password,
-        database: connection.database,
-        connectionString: connection.connectionString,
+        host: typeof connection.host === 'string' ? connection.host : undefined,
+        port: typeof connection.port === 'number' ? connection.port : undefined,
+        username: typeof connection.username === 'string' ? connection.username : undefined,
+        password: typeof connection.password === 'string' ? connection.password : undefined,
+        database: typeof connection.database === 'string' ? connection.database : undefined,
+        connectionString: typeof connection.connectionString === 'string' ? connection.connectionString : undefined,
         options: connection.options as any,
       };
 
@@ -148,21 +149,16 @@ export const executeQuery = async (
 ) => {
   try {
     const userId = req.user?.id;
-    
     if (!userId) {
       throw new ApiError(401, 'Authentication required');
     }
-
     const { queryId, sqlQuery } = req.body;
-
     if (!queryId) {
       throw new ApiError(400, 'Query ID is required');
     }
-
     if (!sqlQuery) {
       throw new ApiError(400, 'SQL query is required');
     }
-
     // Get the query from the database
     const query = await prisma.query.findUnique({
       where: { id: queryId },
@@ -175,69 +171,56 @@ export const executeQuery = async (
         },
       },
     });
-
     if (!query) {
       throw new ApiError(404, 'Query not found');
     }
-
     // Check if playground belongs to the user
     if (query.playground.userId !== userId) {
       throw new ApiError(403, 'Not authorized to execute this query');
     }
-
-    // Check if sandbox database exists
-    if (!query.sandboxDb) {
-      throw new ApiError(400, 'No sandbox database associated with this query');
+    // Use the hybrid query execution logic
+    const connection = query.sandboxDb?.connection;
+    if (!connection) {
+      throw new ApiError(400, 'No database connection found for this query');
     }
-
-    // Execute the query on the sandbox database
-    const sandboxConfig = {
-      type: query.sandboxDb.connection.type,
-      host: query.sandboxDb.host || query.sandboxDb.connection.host,
-      port: query.sandboxDb.port || query.sandboxDb.connection.port,
-      username: query.sandboxDb.username || query.sandboxDb.connection.username,
-      password: query.sandboxDb.password || query.sandboxDb.connection.password,
-      database: query.sandboxDb.name,
-      connectionString: query.sandboxDb.connectionString,
-    };
-
-    const sandboxConnId = `sandbox_conn_${Date.now()}`;
-
+    let result;
     try {
-      await databaseService.connectToDatabase(sandboxConnId, sandboxConfig);
-      const result = await databaseService.executeQuery(sandboxConnId, sqlQuery);
-
+      result = await executeHybridQuery({
+        userId,
+        connection: {
+          type: connection.type,
+          host: typeof connection.host === 'string' ? connection.host : undefined,
+          port: typeof connection.port === 'number' ? connection.port : undefined,
+          username: typeof connection.username === 'string' ? connection.username : undefined,
+          password: typeof connection.password === 'string' ? connection.password : undefined,
+          database: typeof connection.database === 'string' ? connection.database : undefined,
+          connectionString: typeof connection.connectionString === 'string' ? connection.connectionString : undefined,
+          options: connection.options,
+        },
+        sqlQuery
+      });
       // Update the query with the result
       const updatedQuery = await prisma.query.update({
         where: { id: queryId },
         data: {
-          sqlQuery, // Update with potentially modified query
+          sqlQuery,
           result: result as any,
           executionTime: result.executionTime,
         },
       });
-
-      await databaseService.closeDatabaseConnection(sandboxConnId);
-
       res.status(200).json({
         success: true,
-        data: { 
-          query: updatedQuery,
-        },
+        data: { query: updatedQuery },
       });
     } catch (error: any) {
       // Update the query with the error
       await prisma.query.update({
         where: { id: queryId },
         data: {
-          sqlQuery, // Update with potentially modified query
+          sqlQuery,
           error: error.message,
         },
       });
-
-      // Make sure to close the connection
-      await databaseService.closeDatabaseConnection(sandboxConnId);
-
       throw new ApiError(400, `Query execution failed: ${error.message}`);
     }
   } catch (error) {
