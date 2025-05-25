@@ -248,6 +248,7 @@ export const executeQuery = async (
     }
     // Use the hybrid query execution logic
     const connection = query.sandboxDb?.connection;
+    console.log("connection", connection);
     if (!connection) {
       throw new ApiError(400, 'No database connection found for this query');
     }
@@ -256,6 +257,7 @@ export const executeQuery = async (
       result = await executeHybridQuery({
         userId,
         connection: {
+          id: connection.id,
           type: connection.type,
           host: typeof connection.host === 'string' ? connection.host : undefined,
           port: typeof connection.port === 'number' ? connection.port : undefined,
