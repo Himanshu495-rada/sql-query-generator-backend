@@ -15,6 +15,7 @@ import queryRoutes from './routes/query.routes';
 import sandboxRoutes from './routes/sandbox.routes';
 import guiBuilderRoutes from './routes/guiBuilder.routes';
 import chatMessageRoutes from './routes/chatMessage.routes';
+import databaseRoutes from './routes/database.routes';
 
 // Load environment variables
 dotenv.config();
@@ -50,6 +51,7 @@ app.use('/api/queries', queryRoutes);
 app.use('/api/sandbox', sandboxRoutes);
 app.use('/api/gui-builder', guiBuilderRoutes);
 app.use('/api/chat-messages', chatMessageRoutes);
+app.use('/api/database', databaseRoutes);
 
 // Apply error handler
 app.use(errorHandler);
