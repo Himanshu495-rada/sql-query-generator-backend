@@ -1,21 +1,23 @@
-import { Request, Response, NextFunction } from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import OpenAI from 'openai';
-import azureOpenAIClient from '../utils/azureOpenai';
-import { prisma } from '../index';
-import { ApiError } from '../middleware/errorHandler';
-import { logger } from '../utils/logger';
-import * as databaseService from '../services/database.service';
-import { AIGeneratedQuery } from '../utils/types';
-import { executeHybridQuery } from '../services/hybridQuery.service';
+import { Request, Response, NextFunction } from "express";
+import { v4 as uuidv4 } from "uuid";
+import OpenAI from "openai";
+import azureOpenAIClient from "../utils/azureOpenai";
+import { prisma } from "../index";
+import { ApiError } from "../middleware/errorHandler";
+import { logger } from "../utils/logger";
+import * as databaseService from "../services/database.service";
+import { AIGeneratedQuery } from "../utils/types";
+import { executeHybridQuery } from "../services/hybridQuery.service";
+import { z } from "zod";
 
 // Initialize OpenAI client
 // Use either regular OpenAI or Azure OpenAI based on environment configuration
-const openai = process.env.USE_AZURE_OPENAI === 'true' 
-  ? azureOpenAIClient
-  : new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+const openai =
+  process.env.USE_AZURE_OPENAI === "true"
+    ? azureOpenAIClient
+    : new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
 
 // Generate SQL from natural language prompt
 export const generateQuery = async (
@@ -25,21 +27,21 @@ export const generateQuery = async (
 ) => {
   try {
     const userId = req.user?.id;
-    
+
     if (!userId) {
-      throw new ApiError(401, 'Authentication required');
+      throw new ApiError(401, "Authentication required");
     }
 
     // playgroundId is now optional, enforceDQL can be added for chat context
     const { prompt, playgroundId, connectionId, enforceDQL } = req.body;
 
     if (!prompt) {
-      throw new ApiError(400, 'Prompt is required');
+      throw new ApiError(400, "Prompt is required");
     }
 
     // connectionId is always required
     if (!connectionId) {
-      throw new ApiError(400, 'Connection ID is required');
+      throw new ApiError(400, "Connection ID is required");
     }
 
     let playground = null;
@@ -53,9 +55,9 @@ export const generateQuery = async (
       });
 
       if (!playground) {
-        throw new ApiError(404, 'Playground not found or access denied');
+        throw new ApiError(404, "Playground not found or access denied");
       }
-    } 
+    }
     // If playgroundId is not provided, we assume it's from the chat context
     // and don't need to validate the playground itself.
 
@@ -72,7 +74,7 @@ export const generateQuery = async (
     });
 
     if (!connection) {
-      throw new ApiError(404, 'Connection not found or access denied');
+      throw new ApiError(404, "Connection not found or access denied");
     }
 
     // Get database schema for context (existing logic)
@@ -82,12 +84,24 @@ export const generateQuery = async (
     } else {
       const config = {
         type: connection.type,
-        host: typeof connection.host === 'string' ? connection.host : undefined,
-        port: typeof connection.port === 'number' ? connection.port : undefined,
-        username: typeof connection.username === 'string' ? connection.username : undefined,
-        password: typeof connection.password === 'string' ? connection.password : undefined,
-        database: typeof connection.database === 'string' ? connection.database : undefined,
-        connectionString: typeof connection.connectionString === 'string' ? connection.connectionString : undefined,
+        host: typeof connection.host === "string" ? connection.host : undefined,
+        port: typeof connection.port === "number" ? connection.port : undefined,
+        username:
+          typeof connection.username === "string"
+            ? connection.username
+            : undefined,
+        password:
+          typeof connection.password === "string"
+            ? connection.password
+            : undefined,
+        database:
+          typeof connection.database === "string"
+            ? connection.database
+            : undefined,
+        connectionString:
+          typeof connection.connectionString === "string"
+            ? connection.connectionString
+            : undefined,
         options: connection.options as any,
       };
       try {
@@ -96,7 +110,7 @@ export const generateQuery = async (
         await databaseService.closeDatabaseConnection(connectionId);
       } catch (error) {
         logger.error(`Error getting database schema: ${error}`);
-        throw new ApiError(500, 'Failed to get database schema');
+        throw new ApiError(500, "Failed to get database schema");
       }
     }
 
@@ -106,7 +120,7 @@ export const generateQuery = async (
       // Get previous queries from this playground for context
       previousQueries = await prisma.query.findMany({
         where: { playgroundId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 5, // Keep taking 5 for playground context
         select: {
           prompt: true,
@@ -127,7 +141,7 @@ export const generateQuery = async (
             gte: startOfToday,
           },
         },
-        orderBy: { createdAt: 'asc' }, // Chronological for chat history context
+        orderBy: { createdAt: "asc" }, // Chronological for chat history context
         take: 10, // Take more for chat context if desired, e.g., 10
         select: {
           prompt: true,
@@ -137,7 +151,12 @@ export const generateQuery = async (
     }
 
     // Call OpenAI API to generate SQL
-    const generatedQuery = await generateSqlWithOpenAI(prompt, schema, previousQueries, connection.type);
+    const generatedQuery = await generateSqlWithOpenAI(
+      prompt,
+      schema,
+      previousQueries,
+      connection.type
+    );
 
     // TODO: Implement DQL enforcement if enforceDQL is true and !playgroundId
     if (enforceDQL && !playgroundId) {
@@ -146,7 +165,9 @@ export const generateQuery = async (
       // if (!isDQL) {
       //   throw new ApiError(400, 'Generated query is not a DQL query. Only SELECT statements are allowed in chat.');
       // }
-      logger.info(`DQL enforcement requested for chat query. Generated query: ${generatedQuery.query}`);
+      logger.info(
+        `DQL enforcement requested for chat query. Generated query: ${generatedQuery.query}`
+      );
     }
 
     // Save the query to the database
@@ -158,7 +179,14 @@ export const generateQuery = async (
       sandboxDbId: connection.sandboxDb?.id,
       prompt,
       // Format sqlQuery as a JSON string with the required prefix for frontend parsing
-      sqlQuery: `json\n${JSON.stringify({ query: generatedQuery.query, explanation: generatedQuery.explanation }, null, 2)}`,
+      sqlQuery: `json\n${JSON.stringify(
+        {
+          query: generatedQuery.query,
+          explanation: generatedQuery.explanation,
+        },
+        null,
+        2
+      )}`,
       //explanation: generatedQuery.explanation,
     };
 
@@ -178,7 +206,7 @@ export const generateQuery = async (
         data: {
           playgroundId,
           userId,
-          sender: 'user',
+          sender: "user",
           message: prompt,
         },
       });
@@ -187,8 +215,8 @@ export const generateQuery = async (
         data: {
           playgroundId,
           userId,
-          sender: 'ai',
-          message: generatedQuery.explanation || '',
+          sender: "ai",
+          message: generatedQuery.explanation || "",
           sql: generatedQuery.query,
           queryId: newQuery.id,
         },
@@ -218,14 +246,14 @@ export const executeQuery = async (
   try {
     const userId = req.user?.id;
     if (!userId) {
-      throw new ApiError(401, 'Authentication required');
+      throw new ApiError(401, "Authentication required");
     }
     const { queryId, sqlQuery } = req.body;
     if (!queryId) {
-      throw new ApiError(400, 'Query ID is required');
+      throw new ApiError(400, "Query ID is required");
     }
     if (!sqlQuery) {
-      throw new ApiError(400, 'SQL query is required');
+      throw new ApiError(400, "SQL query is required");
     }
     // Get the query from the database
     const query = await prisma.query.findUnique({
@@ -240,17 +268,17 @@ export const executeQuery = async (
       },
     });
     if (!query) {
-      throw new ApiError(404, 'Query not found');
+      throw new ApiError(404, "Query not found");
     }
     // Check if playground belongs to the user
     if (!query.playground || query.playground.userId !== userId) {
-      throw new ApiError(403, 'Not authorized to execute this query');
+      throw new ApiError(403, "Not authorized to execute this query");
     }
     // Use the hybrid query execution logic
     const connection = query.sandboxDb?.connection;
     console.log("connection", connection);
     if (!connection) {
-      throw new ApiError(400, 'No database connection found for this query');
+      throw new ApiError(400, "No database connection found for this query");
     }
     let result;
     try {
@@ -259,15 +287,29 @@ export const executeQuery = async (
         connection: {
           id: connection.id,
           type: connection.type,
-          host: typeof connection.host === 'string' ? connection.host : undefined,
-          port: typeof connection.port === 'number' ? connection.port : undefined,
-          username: typeof connection.username === 'string' ? connection.username : undefined,
-          password: typeof connection.password === 'string' ? connection.password : undefined,
-          database: typeof connection.database === 'string' ? connection.database : undefined,
-          connectionString: typeof connection.connectionString === 'string' ? connection.connectionString : undefined,
+          host:
+            typeof connection.host === "string" ? connection.host : undefined,
+          port:
+            typeof connection.port === "number" ? connection.port : undefined,
+          username:
+            typeof connection.username === "string"
+              ? connection.username
+              : undefined,
+          password:
+            typeof connection.password === "string"
+              ? connection.password
+              : undefined,
+          database:
+            typeof connection.database === "string"
+              ? connection.database
+              : undefined,
+          connectionString:
+            typeof connection.connectionString === "string"
+              ? connection.connectionString
+              : undefined,
           options: connection.options,
         },
-        sqlQuery
+        sqlQuery,
       });
       // Update the query with the result
       const updatedQuery = await prisma.query.update({
@@ -306,15 +348,19 @@ export const saveQuery = async (
 ) => {
   try {
     const userId = req.user?.id;
-    
+
     if (!userId) {
-      throw new ApiError(401, 'Authentication required');
+      throw new ApiError(401, "Authentication required");
     }
 
-    const { prompt, sqlQuery, playgroundId, sandboxDbId, explanation } = req.body;
+    const { prompt, sqlQuery, playgroundId, sandboxDbId, explanation } =
+      req.body;
 
     if (!prompt || !sqlQuery || !playgroundId) {
-      throw new ApiError(400, 'Prompt, SQL query, and playground ID are required');
+      throw new ApiError(
+        400,
+        "Prompt, SQL query, and playground ID are required"
+      );
     }
 
     // Check if playground exists and belongs to the user
@@ -326,7 +372,7 @@ export const saveQuery = async (
     });
 
     if (!playground) {
-      throw new ApiError(404, 'Playground not found');
+      throw new ApiError(404, "Playground not found");
     }
 
     // Check if sandbox database exists if provided
@@ -339,7 +385,7 @@ export const saveQuery = async (
       });
 
       if (!sandboxDb || sandboxDb.connection.userId !== userId) {
-        throw new ApiError(404, 'Sandbox database not found');
+        throw new ApiError(404, "Sandbox database not found");
       }
     }
 
@@ -374,9 +420,9 @@ export const getQueryById = async (
   try {
     const userId = req.user?.id;
     const queryId = req.params.id;
-    
+
     if (!userId) {
-      throw new ApiError(401, 'Authentication required');
+      throw new ApiError(401, "Authentication required");
     }
 
     // Get the query from the database
@@ -394,12 +440,12 @@ export const getQueryById = async (
     });
 
     if (!query) {
-      throw new ApiError(404, 'Query not found');
+      throw new ApiError(404, "Query not found");
     }
 
     // Check if playground belongs to the user
     if (query.playground.userId !== userId) {
-      throw new ApiError(403, 'Not authorized to view this query');
+      throw new ApiError(403, "Not authorized to view this query");
     }
 
     res.status(200).json({
@@ -420,9 +466,9 @@ export const deleteQuery = async (
   try {
     const userId = req.user?.id;
     const queryId = req.params.id;
-    
+
     if (!userId) {
-      throw new ApiError(401, 'Authentication required');
+      throw new ApiError(401, "Authentication required");
     }
 
     // Get the query from the database to check ownership
@@ -434,12 +480,12 @@ export const deleteQuery = async (
     });
 
     if (!query) {
-      throw new ApiError(404, 'Query not found');
+      throw new ApiError(404, "Query not found");
     }
 
     // Check if playground belongs to the user
     if (!query.playground || query.playground.userId !== userId) {
-      throw new ApiError(403, 'Not authorized to delete this query');
+      throw new ApiError(403, "Not authorized to delete this query");
     }
 
     // Delete the query
@@ -449,7 +495,7 @@ export const deleteQuery = async (
 
     res.status(200).json({
       success: true,
-      message: 'Query deleted successfully',
+      message: "Query deleted successfully",
     });
   } catch (error) {
     next(error);
@@ -465,9 +511,9 @@ export const getQueryHistory = async (
   try {
     const userId = req.user?.id;
     const playgroundId = req.params.playgroundId;
-    
+
     if (!userId) {
-      throw new ApiError(401, 'Authentication required');
+      throw new ApiError(401, "Authentication required");
     }
 
     // Check if playground exists and belongs to the user
@@ -479,13 +525,13 @@ export const getQueryHistory = async (
     });
 
     if (!playground) {
-      throw new ApiError(404, 'Playground not found');
+      throw new ApiError(404, "Playground not found");
     }
 
     // Get query history
     const queries = await prisma.query.findMany({
       where: { playgroundId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       include: {
         sandboxDb: {
           select: {
@@ -517,16 +563,19 @@ const generateSqlWithOpenAI = async (
   try {
     // Format schema information
     const schemaInfo = formatSchemaForPrompt(schema);
-    
+
     // Format previous queries
-    const previousQueriesInfo = previousQueries.length > 0
-      ? `Previous queries in this playground:\n${previousQueries.map(q => `User: ${q.prompt}\nSQL: ${q.sqlQuery}`).join('\n\n')}`
-      : 'No previous queries in this playground.';
+    const previousQueriesInfo =
+      previousQueries.length > 0
+        ? `Previous queries in this playground:\n${previousQueries
+            .map((q) => `User: ${q.prompt}\nSQL: ${q.sqlQuery}`)
+            .join("\n\n")}`
+        : "No previous queries in this playground.";
 
     // Construct messages for OpenAI
     const messages = [
       {
-        role: 'system',
+        role: "system",
         content: `You are a SQL expert that converts natural language queries to SQL. 
         You support various database types including PostgreSQL, MySQL, SQLite, and MongoDB.
         The current database type is: ${databaseType}.
@@ -537,50 +586,56 @@ const generateSqlWithOpenAI = async (
         - Format the query with proper indentation
         - For MongoDB, return a valid JSON query string
         
-        You should also provide an explanation of the query separate from the SQL itself.
+        You MUST respond with a valid JSON object containing exactly two fields:
+        - "query": containing the SQL query as a string
+        - "explanation": containing the explanation as a string
         
-        Respond in JSON format with "query" and "explanation" fields:
+        Example response format:
         {
-          "query": "-- The SQL query here\\nSELECT * FROM users;",
-          "explanation": "This query retrieves all users from the database."
-        }
-        
-        This will be parsed as JSON so ensure your response is properly formatted.`
+          "query": "SELECT * FROM users WHERE age > 25;",
+          "explanation": "This query selects all users older than 25 years."
+        }`,
       },
       {
-        role: 'user',
-        content: `Database Schema:\n${schemaInfo}\n\n${previousQueriesInfo}\n\nUser Query: ${prompt}`
-      }
+        role: "user",
+        content: `Database Schema:\n${schemaInfo}\n\n${previousQueriesInfo}\n\nUser Query: ${prompt}`,
+      },
     ];
 
     // Call OpenAI API
     const completion = await openai.chat.completions.create({
-      model: process.env.USE_AZURE_OPENAI === 'true' 
-        ? process.env.AZURE_OPENAI_MODEL_NAME || 'gpt-4o-mini'
-        : 'gpt-3.5-turbo',
+      model:
+        process.env.USE_AZURE_OPENAI === "true"
+          ? process.env.AZURE_OPENAI_MODEL_NAME || "gpt-4o-mini"
+          : "gpt-3.5-turbo",
       messages: messages as any,
-      temperature: 0.2,        // Lower temperature for more deterministic output
+      temperature: 0.2, // Lower temperature for more deterministic output
       max_tokens: 1000,
+      response_format: { type: "json_object" }, // Add this line
     });
 
     // Extract JSON response
-    const responseText = completion.choices[0].message.content || '';
-    
+    const responseText = completion.choices[0].message.content || "";
+
+    // Define Zod schema for validation
+    const aiGeneratedQuerySchema = z.object({
+      query: z.string(),
+      explanation: z.string(),
+    });
+
     try {
-      // Try to parse as JSON
+      // Try to parse as JSON and validate with Zod
       const jsonResponse = JSON.parse(responseText);
+      const parsed = aiGeneratedQuerySchema.parse(jsonResponse);
       return {
-        query: jsonResponse.query,
-        explanation: jsonResponse.explanation,
+        query: parsed.query,
+        explanation: parsed.explanation,
       };
     } catch (error) {
-      // If parsing fails, try to extract SQL more naively
-      const queryMatch = responseText.match(/```sql\n([\s\S]*?)```/);
-      const query = queryMatch ? queryMatch[1].trim() : responseText.trim();
-      
+      // If parsing or validation fails, fallback to default extraction
       return {
-        query,
-        explanation: 'Generated SQL based on your prompt.',
+        query: responseText.trim(),
+        explanation: "Generated SQL based on your prompt.",
       };
     }
   } catch (error: any) {
@@ -594,26 +649,26 @@ const generateSqlWithOpenAI = async (
  */
 const formatSchemaForPrompt = (schema: any): string => {
   if (!schema || !schema.tables || schema.tables.length === 0) {
-    return 'No schema information available.';
+    return "No schema information available.";
   }
 
-  let formattedSchema = '';
+  let formattedSchema = "";
 
   // Format each table
   schema.tables.forEach((table: any) => {
     formattedSchema += `Table: ${table.name}\n`;
-    
+
     // Add columns
-    formattedSchema += 'Columns:\n';
+    formattedSchema += "Columns:\n";
     table.columns.forEach((column: any) => {
-      const primaryKey = column.isPrimaryKey ? ' (PRIMARY KEY)' : '';
-      const foreignKey = column.isForeignKey ? ' (FOREIGN KEY)' : '';
-      const nullable = column.nullable ? '' : ' NOT NULL';
+      const primaryKey = column.isPrimaryKey ? " (PRIMARY KEY)" : "";
+      const foreignKey = column.isForeignKey ? " (FOREIGN KEY)" : "";
+      const nullable = column.nullable ? "" : " NOT NULL";
       formattedSchema += `- ${column.name}: ${column.type}${primaryKey}${foreignKey}${nullable}\n`;
     });
-    
-    formattedSchema += '\n';
+
+    formattedSchema += "\n";
   });
 
   return formattedSchema;
-}; 
+};

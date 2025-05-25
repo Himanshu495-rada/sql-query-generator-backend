@@ -258,6 +258,11 @@ export const deletePlayground = async (
       where: { playgroundId },
     });
 
+    // Delete all associated chat messages
+    await prisma.chatMessage.deleteMany({
+      where: { playgroundId },
+    });
+
     // Delete all associated queries
     await prisma.query.deleteMany({
       where: { playgroundId },
