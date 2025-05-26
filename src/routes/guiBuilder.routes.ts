@@ -1,6 +1,6 @@
-import express from 'express';
-import { authenticate } from '../middleware/auth';
-import * as guiBuilderController from '../controllers/guiBuilder.controller';
+import express from "express";
+import { authenticate } from "../middleware/auth";
+import * as guiBuilderController from "../controllers/guiBuilder.controller";
 
 const router = express.Router();
 
@@ -8,12 +8,21 @@ const router = express.Router();
 router.use(authenticate);
 
 // Get all tables and relationships for a database
-router.get('/schema/:connectionId', guiBuilderController.getDatabaseSchemaForBuilder);
+router.get(
+  "/schema/:connectionId",
+  guiBuilderController.getDatabaseSchemaForBuilder
+);
 
 // Generate SQL from GUI builder configuration
-router.post('/generate', guiBuilderController.generateSqlFromGuiConfig);
+router.post("/generate", guiBuilderController.generateSqlFromGuiConfig);
 
 // Get sample queries for a table
-router.get('/samples/:connectionId/table/:tableName', guiBuilderController.getSampleQueriesForTable);
+router.get(
+  "/samples/:connectionId/table/:tableName",
+  guiBuilderController.getSampleQueriesForTable
+);
 
-export default router; 
+// Execute SQL query directly for GUI Builder
+router.post("/execute", guiBuilderController.executeQuery);
+
+export default router;

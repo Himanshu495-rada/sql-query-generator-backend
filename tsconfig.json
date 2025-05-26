@@ -7,8 +7,8 @@
     "rootDir": "src",
     "outDir": "dist",
     "strict": false,
-    "noImplicitAny": false,
-    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "strictNullChecks": false,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "emitDecoratorMetadata": true,
@@ -16,6 +16,7 @@
     "resolveJsonModule": true,
     "typeRoots": ["node_modules/@types"],
     "sourceMap": true,
+    
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "**/*.test.ts"]
