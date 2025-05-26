@@ -1,25 +1,25 @@
-import { DatabaseType } from '@prisma/client';
+import { DatabaseType } from "@prisma/client";
 
 // Database types array for documentation
 export const DATABASE_TYPES = [
-  { 
-    type: DatabaseType.POSTGRESQL, 
-    name: 'PostgreSQL',
+  {
+    type: DatabaseType.POSTGRESQL,
+    name: "PostgreSQL",
     supportsSandbox: true,
   },
-  { 
-    type: DatabaseType.MYSQL, 
-    name: 'MySQL',
+  {
+    type: DatabaseType.MYSQL,
+    name: "MySQL",
     supportsSandbox: true,
   },
-  { 
-    type: DatabaseType.SQLITE, 
-    name: 'SQLite',
+  {
+    type: DatabaseType.SQLITE,
+    name: "SQLite",
     supportsSandbox: true,
   },
-  { 
-    type: DatabaseType.MONGODB, 
-    name: 'MongoDB',
+  {
+    type: DatabaseType.MONGODB,
+    name: "MongoDB",
     supportsSandbox: false,
   },
 ];
@@ -103,7 +103,7 @@ export interface ProcedureInfo {
 export interface ProcedureParameterInfo {
   name: string;
   type: string;
-  mode?: 'IN' | 'OUT' | 'INOUT';
+  mode?: "IN" | "OUT" | "INOUT";
   defaultValue?: string;
 }
 
@@ -137,7 +137,7 @@ export interface SchemaRelationship {
   toTable: string;
   toSchema?: string;
   toColumn: string;
-  type: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
+  type: "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
 }
 
 // GUI query builder column config
@@ -157,7 +157,7 @@ export interface GuiBuilderFilter {
 // GUI query builder sort config
 export interface GuiBuilderSort {
   column: string;
-  direction: 'ASC' | 'DESC';
+  direction: "ASC" | "DESC";
 }
 
 // GUI query builder configuration
@@ -174,7 +174,7 @@ export interface GuiBuilderConfig {
 
 // GUI query builder join configuration
 export interface GuiBuilderJoin {
-  type: 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
+  type: "INNER" | "LEFT" | "RIGHT" | "FULL";
   table: string;
   tableSchema?: string;
   tableAlias?: string;
@@ -184,9 +184,9 @@ export interface GuiBuilderJoin {
   }[];
 }
 
-export type QueryType = 'DQL' | 'DML' | 'DDL' | 'UNKNOWN';
+export type QueryType = "DQL" | "DML" | "DDL" | "UNKNOWN";
 
 export interface SandboxTableMeta {
   tableName: string;
   lastCopied: Date;
-} 
+}

@@ -1,31 +1,31 @@
-import { v4 as uuidv4 } from 'uuid';
-import { Pool } from 'pg';
-import mysql from 'mysql2/promise';
-import { open as sqliteOpen } from 'sqlite';
-import sqlite3 from 'sqlite3';
-import { prisma } from '../index';
-import { logger } from '../utils/logger';
-import { ApiError } from '../middleware/errorHandler';
-import { 
-  DatabaseConfig, 
-  DatabaseSchema, 
-  TableInfo, 
+import { v4 as uuidv4 } from "uuid";
+import { Pool } from "pg";
+import mysql from "mysql2/promise";
+import { open as sqliteOpen } from "sqlite";
+import sqlite3 from "sqlite3";
+import { prisma } from "../index";
+import { logger } from "../utils/logger";
+import { ApiError } from "../middleware/errorHandler";
+import {
+  DatabaseConfig,
+  DatabaseSchema,
+  TableInfo,
   SandboxStatus,
-} from '../utils/types';
-import { DatabaseType } from '@prisma/client';
-import * as databaseService from './database.service';
-import * as fs from 'fs';
-import * as path from 'path';
+} from "../utils/types";
+import { DatabaseType } from "@prisma/client";
+import * as databaseService from "./database.service";
+import * as fs from "fs";
+import * as path from "path";
 
 // Sandbox database names prefix
-const SANDBOX_PREFIX = process.env.SANDBOX_DB_PREFIX || 'sandbox_';
+const SANDBOX_PREFIX = process.env.SANDBOX_DB_PREFIX || "sandbox_";
 
 // Default sandbox credentials
 const SANDBOX_DEFAULTS = {
-  host: process.env.SANDBOX_DB_HOST || 'localhost',
-  port: parseInt(process.env.SANDBOX_DB_PORT || '5432'),
-  username: process.env.SANDBOX_DB_USER || 'sandbox_user',
-  password: process.env.SANDBOX_DB_PASSWORD || 'sandbox_password',
+  host: process.env.SANDBOX_DB_HOST || "localhost",
+  port: parseInt(process.env.SANDBOX_DB_PORT || "5432"),
+  username: process.env.SANDBOX_DB_USER || "sandbox_user",
+  password: process.env.SANDBOX_DB_PASSWORD || "sandbox_password",
 };
 
 /**
@@ -43,7 +43,7 @@ export const createSandboxDatabase = async (
     });
 
     if (!connection) {
-      throw new ApiError(404, 'Connection not found');
+      throw new ApiError(404, "Connection not found");
     }
 
     // Check if sandbox already exists
@@ -57,23 +57,40 @@ export const createSandboxDatabase = async (
 
     // Create a sandbox database
     let sandboxConfig: DatabaseConfig;
-    const sandboxName = `${SANDBOX_PREFIX}${connection.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
+    const sandboxName = `${SANDBOX_PREFIX}${connection.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "_")}_${Date.now()}`;
 
     switch (sourceConfig.type) {
       case DatabaseType.POSTGRESQL:
-        sandboxConfig = await createPostgresSandboxDb(sandboxName, sourceConfig, schema);
+        sandboxConfig = await createPostgresSandboxDb(
+          sandboxName,
+          sourceConfig,
+          schema
+        );
         break;
-      
+
       case DatabaseType.MYSQL:
-        sandboxConfig = await createMySqlSandboxDb(sandboxName, sourceConfig, schema);
+        sandboxConfig = await createMySqlSandboxDb(
+          sandboxName,
+          sourceConfig,
+          schema
+        );
         break;
-      
+
       case DatabaseType.SQLITE:
-        sandboxConfig = await createSqliteSandboxDb(sandboxName, sourceConfig, schema);
+        sandboxConfig = await createSqliteSandboxDb(
+          sandboxName,
+          sourceConfig,
+          schema
+        );
         break;
-      
+
       default:
-        throw new ApiError(400, `Sandbox creation not supported for ${sourceConfig.type}`);
+        throw new ApiError(
+          400,
+          `Sandbox creation not supported for ${sourceConfig.type}`
+        );
     }
 
     // Save sandbox info to database
@@ -101,11 +118,16 @@ export const createSandboxDatabase = async (
       },
     });
 
-    logger.info(`Created sandbox database ${sandboxName} for connection ${connectionId}`);
+    logger.info(
+      `Created sandbox database ${sandboxName} for connection ${connectionId}`
+    );
     return sandboxDb;
   } catch (error: any) {
     logger.error(`Error creating sandbox database: ${error.message}`);
-    throw new ApiError(500, `Failed to create sandbox database: ${error.message}`);
+    throw new ApiError(
+      500,
+      `Failed to create sandbox database: ${error.message}`
+    );
   }
 };
 
@@ -113,7 +135,7 @@ export const createSandboxDatabase = async (
  * Create a PostgreSQL sandbox database
  */
 const createPostgresSandboxDb = async (
-  sandboxName: string, 
+  sandboxName: string,
   sourceConfig: DatabaseConfig,
   schema: DatabaseSchema
 ): Promise<DatabaseConfig> => {
@@ -124,7 +146,7 @@ const createPostgresSandboxDb = async (
     port: SANDBOX_DEFAULTS.port,
     username: SANDBOX_DEFAULTS.username,
     password: SANDBOX_DEFAULTS.password,
-    database: 'postgres', // Connect to default database
+    database: "postgres", // Connect to default database
   };
 
   const adminConnId = `admin_conn_${Date.now()}`;
@@ -132,7 +154,7 @@ const createPostgresSandboxDb = async (
 
   try {
     await databaseService.executeQuery(
-      adminConnId, 
+      adminConnId,
       `CREATE DATABASE ${sandboxName};`
     );
 
@@ -154,7 +176,10 @@ const createPostgresSandboxDb = async (
       // Create tables
       for (const table of schema.tables) {
         // Skip system tables
-        if (table.name.startsWith('pg_') || table.name.startsWith('information_schema')) {
+        if (
+          table.name.startsWith("pg_") ||
+          table.name.startsWith("information_schema")
+        ) {
           continue;
         }
         const createTableQuery = generatePostgresCreateTableQuery(table);
@@ -164,20 +189,33 @@ const createPostgresSandboxDb = async (
         const sourceConnId = `source_conn_${Date.now()}`;
         await databaseService.connectToDatabase(sourceConnId, sourceConfig);
         try {
-          const selectResult = await databaseService.executeQuery(sourceConnId, `SELECT * FROM "${table.name}"`);
+          const selectResult = await databaseService.executeQuery(
+            sourceConnId,
+            `SELECT * FROM "${table.name}"`
+          );
           if (selectResult.rows.length > 0) {
             const columns = Object.keys(selectResult.rows[0]);
             // Batch insert for large tables
             const batchSize = 1000;
             for (let i = 0; i < selectResult.rows.length; i += batchSize) {
               const batch = selectResult.rows.slice(i, i + batchSize);
-              const values = batch.map(row => {
-                return '(' + columns.map(col => {
-                  if (row[col] === null) return 'NULL';
-                  return `'${String(row[col]).replace(/'/g, "''")}'`;
-                }).join(',') + ')';
-              }).join(',');
-              const insertQuery = `INSERT INTO "${table.name}" (${columns.map(col => `"${col}"`).join(',')}) VALUES ${values}`;
+              const values = batch
+                .map((row) => {
+                  return (
+                    "(" +
+                    columns
+                      .map((col) => {
+                        if (row[col] === null) return "NULL";
+                        return `'${String(row[col]).replace(/'/g, "''")}'`;
+                      })
+                      .join(",") +
+                    ")"
+                  );
+                })
+                .join(",");
+              const insertQuery = `INSERT INTO "${table.name}" (${columns
+                .map((col) => `"${col}"`)
+                .join(",")}) VALUES ${values}`;
               await databaseService.executeQuery(sandboxConnId, insertQuery);
             }
           }
@@ -199,7 +237,7 @@ const createPostgresSandboxDb = async (
  * Create a MySQL sandbox database
  */
 const createMySqlSandboxDb = async (
-  sandboxName: string, 
+  sandboxName: string,
   sourceConfig: DatabaseConfig,
   schema: DatabaseSchema
 ): Promise<DatabaseConfig> => {
@@ -217,7 +255,7 @@ const createMySqlSandboxDb = async (
 
   try {
     await databaseService.executeQuery(
-      adminConnId, 
+      adminConnId,
       `CREATE DATABASE IF NOT EXISTS \`${sandboxName}\`;`
     );
 
@@ -245,19 +283,32 @@ const createMySqlSandboxDb = async (
         const sourceConnId = `source_conn_${Date.now()}`;
         await databaseService.connectToDatabase(sourceConnId, sourceConfig);
         try {
-          const selectResult = await databaseService.executeQuery(sourceConnId, `SELECT * FROM \`${table.name}\``);
+          const selectResult = await databaseService.executeQuery(
+            sourceConnId,
+            `SELECT * FROM \`${table.name}\``
+          );
           if (selectResult.rows.length > 0) {
             const columns = Object.keys(selectResult.rows[0]);
             const batchSize = 1000;
             for (let i = 0; i < selectResult.rows.length; i += batchSize) {
               const batch = selectResult.rows.slice(i, i + batchSize);
-              const values = batch.map(row => {
-                return '(' + columns.map(col => {
-                  if (row[col] === null) return 'NULL';
-                  return `'${String(row[col]).replace(/'/g, "''")}'`;
-                }).join(',') + ')';
-              }).join(',');
-              const insertQuery = `INSERT INTO \`${table.name}\` (${columns.map(col => `\`${col}\``).join(',')}) VALUES ${values}`;
+              const values = batch
+                .map((row) => {
+                  return (
+                    "(" +
+                    columns
+                      .map((col) => {
+                        if (row[col] === null) return "NULL";
+                        return `'${String(row[col]).replace(/'/g, "''")}'`;
+                      })
+                      .join(",") +
+                    ")"
+                  );
+                })
+                .join(",");
+              const insertQuery = `INSERT INTO \`${table.name}\` (${columns
+                .map((col) => `\`${col}\``)
+                .join(",")}) VALUES ${values}`;
               await databaseService.executeQuery(sandboxConnId, insertQuery);
             }
           }
@@ -279,14 +330,14 @@ const createMySqlSandboxDb = async (
  * Create a SQLite sandbox database (in-memory, do not store file)
  */
 const createSqliteSandboxDb = async (
-  sandboxName: string, 
+  sandboxName: string,
   sourceConfig: DatabaseConfig,
   schema: DatabaseSchema
 ): Promise<DatabaseConfig> => {
   // Use in-memory SQLite DB for sandbox
   const sandboxConfig: DatabaseConfig = {
     type: DatabaseType.SQLITE,
-    database: ':memory:',
+    database: ":memory:",
   };
 
   const sandboxConnId = `sandbox_conn_${Date.now()}`;
@@ -302,24 +353,41 @@ const createSqliteSandboxDb = async (
       const sourceConnId = `source_conn_${Date.now()}`;
       await databaseService.connectToDatabase(sourceConnId, sourceConfig);
       try {
-        const selectResult = await databaseService.executeQuery(sourceConnId, `SELECT * FROM "${table.name}"`);
+        const selectResult = await databaseService.executeQuery(
+          sourceConnId,
+          `SELECT * FROM "${table.name}"`
+        );
         if (selectResult.rows.length > 0) {
           const columns = Object.keys(selectResult.rows[0]);
           const batchSize = 1000;
           for (let i = 0; i < selectResult.rows.length; i += batchSize) {
             const batch = selectResult.rows.slice(i, i + batchSize);
-            const values = batch.map(row => {
-              return '(' + columns.map(col => {
-                if (row[col] === null) return 'NULL';
-                return `'${String(row[col]).replace(/'/g, "''")}'`;
-              }).join(',') + ')';
-            }).join(',');
+            const values = batch
+              .map((row) => {
+                return (
+                  "(" +
+                  columns
+                    .map((col) => {
+                      if (row[col] === null) return "NULL";
+                      return `'${String(row[col]).replace(/'/g, "''")}'`;
+                    })
+                    .join(",") +
+                  ")"
+                );
+              })
+              .join(",");
             try {
               // Use INSERT OR IGNORE to skip rows that would violate unique constraints
-              const insertQuery = `INSERT OR IGNORE INTO "${table.name}" (${columns.map(col => `"${col}"`).join(',')}) VALUES ${values}`;
+              const insertQuery = `INSERT OR IGNORE INTO "${
+                table.name
+              }" (${columns
+                .map((col) => `"${col}"`)
+                .join(",")}) VALUES ${values}`;
               await databaseService.executeQuery(sandboxConnId, insertQuery);
             } catch (error: any) {
-              logger.warn(`Error inserting data into sandbox table ${table.name}: ${error.message}`);
+              logger.warn(
+                `Error inserting data into sandbox table ${table.name}: ${error.message}`
+              );
               // Continue with next batch even if this one fails
               continue;
             }
@@ -340,44 +408,51 @@ const createSqliteSandboxDb = async (
  */
 const generatePostgresCreateTableQuery = (table: TableInfo): string => {
   // First create any needed sequences for auto-incrementing columns
-  let sequenceQueries = '';
-  
+  let sequenceQueries = "";
+
   // Identify columns that need sequences (likely auto-increment/serial columns)
-  const columnsNeedingSequences = table.columns.filter(col => 
-    col.defaultValue?.includes('nextval') || 
-    col.type.toLowerCase().includes('serial')
+  const columnsNeedingSequences = table.columns.filter(
+    (col) =>
+      col.defaultValue?.includes("nextval") ||
+      col.type.toLowerCase().includes("serial")
   );
-  
+
   // Generate sequence creation statements
   for (const col of columnsNeedingSequences) {
     const sequenceName = `${table.name}_${col.name}_seq`;
-    sequenceQueries += `CREATE SEQUENCE IF NOT EXISTS "${table.schema || 'public'}"."${sequenceName}";\n`;
+    sequenceQueries += `CREATE SEQUENCE IF NOT EXISTS "${
+      table.schema || "public"
+    }"."${sequenceName}";\n`;
   }
-  
+
   // Generate main table creation query
-  const columns = table.columns.map(col => {
-    let nullable = col.nullable ? 'NULL' : 'NOT NULL';
-    let defaultValue = col.defaultValue ? `DEFAULT ${col.defaultValue}` : '';
-    
+  const columns = table.columns.map((col) => {
+    let nullable = col.nullable ? "NULL" : "NOT NULL";
+    let defaultValue = col.defaultValue ? `DEFAULT ${col.defaultValue}` : "";
+
     // Replace nextval references with our explicitly created sequences
-    if (defaultValue.includes('nextval')) {
+    if (defaultValue.includes("nextval")) {
       const sequenceName = `${table.name}_${col.name}_seq`;
-      defaultValue = `DEFAULT nextval('"${table.schema || 'public'}"."${sequenceName}"')`;
+      defaultValue = `DEFAULT nextval('"${
+        table.schema || "public"
+      }"."${sequenceName}"')`;
     }
-    
-    return `"${col.name}" ${mapToPostgresType(col.type)} ${nullable} ${defaultValue}`.trim();
+
+    return `"${col.name}" ${mapToPostgresType(
+      col.type
+    )} ${nullable} ${defaultValue}`.trim();
   });
 
   let query = sequenceQueries;
-  query += `CREATE TABLE "${table.schema || 'public'}"."${table.name}" (\n`;
-  query += columns.join(',\n');
+  query += `CREATE TABLE "${table.schema || "public"}"."${table.name}" (\n`;
+  query += columns.join(",\n");
 
   // Add primary key
   if (table.primaryKey && table.primaryKey.length > 0) {
     query += `,\nPRIMARY KEY ("${table.primaryKey.join('", "')}")`;
   }
 
-  query += '\n);';
+  query += "\n);";
   return query;
 };
 
@@ -385,20 +460,24 @@ const generatePostgresCreateTableQuery = (table: TableInfo): string => {
  * Generate a MySQL CREATE TABLE query from table info
  */
 const generateMySqlCreateTableQuery = (table: TableInfo): string => {
-  const columns = table.columns.map(col => {
-    const nullable = col.nullable ? 'NULL' : 'NOT NULL';
-    const defaultValue = col.defaultValue ? `DEFAULT ${col.defaultValue}` : '';
-    return `\`${col.name}\` ${mapToMySqlType(col.type)} ${nullable} ${defaultValue}`.trim();
+  const columns = table.columns.map((col) => {
+    const nullable = col.nullable ? "NULL" : "NOT NULL";
+    const defaultValue = col.defaultValue ? `DEFAULT ${col.defaultValue}` : "";
+    return `\`${col.name}\` ${mapToMySqlType(
+      col.type
+    )} ${nullable} ${defaultValue}`.trim();
   });
 
-  let query = `CREATE TABLE \`${table.name}\` (\\n${columns.join(',\\n')}\\n  `;
+  let query = `CREATE TABLE \`${table.name}\` (\\n${columns.join(",\\n")}\\n  `;
 
   // Add primary key
   if (table.primaryKey && table.primaryKey.length > 0) {
-    query += `,\\nPRIMARY KEY (${table.primaryKey.map(pk => `\`${pk}\``).join(', ')})`;
+    query += `,\\nPRIMARY KEY (${table.primaryKey
+      .map((pk) => `\`${pk}\``)
+      .join(", ")})`;
   }
 
-  query += '\\n);';
+  query += "\\n);";
   return query;
 };
 
@@ -406,21 +485,23 @@ const generateMySqlCreateTableQuery = (table: TableInfo): string => {
  * Generate a SQLite CREATE TABLE query from table info
  */
 const generateSqliteCreateTableQuery = (table: TableInfo): string => {
-  const columns = table.columns.map(col => {
-    const nullable = col.nullable ? '' : 'NOT NULL';
-    const defaultValue = col.defaultValue ? `DEFAULT ${col.defaultValue}` : '';
-    return `"${col.name}" ${mapToSqliteType(col.type)} ${nullable} ${defaultValue}`.trim();
+  const columns = table.columns.map((col) => {
+    const nullable = col.nullable ? "" : "NOT NULL";
+    const defaultValue = col.defaultValue ? `DEFAULT ${col.defaultValue}` : "";
+    return `"${col.name}" ${mapToSqliteType(
+      col.type
+    )} ${nullable} ${defaultValue}`.trim();
   });
 
   let query = `CREATE TABLE "${table.name}" (\n`;
-  query += columns.join(',\n');
+  query += columns.join(",\n");
 
   // Add primary key
   if (table.primaryKey && table.primaryKey.length > 0) {
     query += `,\nPRIMARY KEY ("${table.primaryKey.join('", "')}")`;
   }
 
-  query += '\n);';
+  query += "\n);";
   return query;
 };
 
@@ -430,44 +511,44 @@ const generateSqliteCreateTableQuery = (table: TableInfo): string => {
 const mapToPostgresType = (type: string): string => {
   // Base mapping for common types
   switch (type.toLowerCase()) {
-    case 'int':
-    case 'integer':
-      return 'INTEGER';
-    case 'bigint':
-      return 'BIGINT';
-    case 'smallint':
-      return 'SMALLINT';
-    case 'float':
-    case 'double':
-      return 'DOUBLE PRECISION';
-    case 'decimal':
-    case 'numeric':
-      return 'NUMERIC';
-    case 'char':
-      return 'CHAR';
-    case 'varchar':
-    case 'string':
-      return 'VARCHAR(255)';
-    case 'text':
-      return 'TEXT';
-    case 'date':
-      return 'DATE';
-    case 'time':
-      return 'TIME';
-    case 'timestamp':
-    case 'datetime':
-      return 'TIMESTAMP';
-    case 'boolean':
-    case 'bool':
-      return 'BOOLEAN';
-    case 'json':
-      return 'JSONB';
-    case 'blob':
-    case 'binary':
-      return 'BYTEA';
+    case "int":
+    case "integer":
+      return "INTEGER";
+    case "bigint":
+      return "BIGINT";
+    case "smallint":
+      return "SMALLINT";
+    case "float":
+    case "double":
+      return "DOUBLE PRECISION";
+    case "decimal":
+    case "numeric":
+      return "NUMERIC";
+    case "char":
+      return "CHAR";
+    case "varchar":
+    case "string":
+      return "VARCHAR(255)";
+    case "text":
+      return "TEXT";
+    case "date":
+      return "DATE";
+    case "time":
+      return "TIME";
+    case "timestamp":
+    case "datetime":
+      return "TIMESTAMP";
+    case "boolean":
+    case "bool":
+      return "BOOLEAN";
+    case "json":
+      return "JSONB";
+    case "blob":
+    case "binary":
+      return "BYTEA";
     default:
       // For complex types or unknown types, default to TEXT
-      return 'TEXT';
+      return "TEXT";
   }
 };
 
@@ -477,45 +558,45 @@ const mapToPostgresType = (type: string): string => {
 const mapToMySqlType = (type: string): string => {
   // Base mapping for common types
   switch (type.toLowerCase()) {
-    case 'int':
-    case 'integer':
-      return 'INT';
-    case 'bigint':
-      return 'BIGINT';
-    case 'smallint':
-      return 'SMALLINT';
-    case 'float':
-      return 'FLOAT';
-    case 'double':
-      return 'DOUBLE';
-    case 'decimal':
-    case 'numeric':
-      return 'DECIMAL(10,2)';
-    case 'char':
-      return 'CHAR';
-    case 'varchar':
-    case 'string':
-      return 'VARCHAR(255)';
-    case 'text':
-      return 'TEXT';
-    case 'date':
-      return 'DATE';
-    case 'time':
-      return 'TIME';
-    case 'timestamp':
-    case 'datetime':
-      return 'DATETIME';
-    case 'boolean':
-    case 'bool':
-      return 'TINYINT(1)';
-    case 'json':
-      return 'JSON';
-    case 'blob':
-    case 'binary':
-      return 'BLOB';
+    case "int":
+    case "integer":
+      return "INT";
+    case "bigint":
+      return "BIGINT";
+    case "smallint":
+      return "SMALLINT";
+    case "float":
+      return "FLOAT";
+    case "double":
+      return "DOUBLE";
+    case "decimal":
+    case "numeric":
+      return "DECIMAL(10,2)";
+    case "char":
+      return "CHAR";
+    case "varchar":
+    case "string":
+      return "VARCHAR(255)";
+    case "text":
+      return "TEXT";
+    case "date":
+      return "DATE";
+    case "time":
+      return "TIME";
+    case "timestamp":
+    case "datetime":
+      return "DATETIME";
+    case "boolean":
+    case "bool":
+      return "TINYINT(1)";
+    case "json":
+      return "JSON";
+    case "blob":
+    case "binary":
+      return "BLOB";
     default:
       // For complex types or unknown types, default to TEXT
-      return 'TEXT';
+      return "TEXT";
   }
 };
 
@@ -525,44 +606,46 @@ const mapToMySqlType = (type: string): string => {
 const mapToSqliteType = (type: string): string => {
   // SQLite has only 5 basic types: NULL, INTEGER, REAL, TEXT, and BLOB
   switch (type.toLowerCase()) {
-    case 'int':
-    case 'integer':
-    case 'bigint':
-    case 'smallint':
-    case 'tinyint':
-      return 'INTEGER';
-    case 'float':
-    case 'double':
-    case 'decimal':
-    case 'numeric':
-    case 'real':
-      return 'REAL';
-    case 'char':
-    case 'varchar':
-    case 'text':
-    case 'string':
-    case 'date':
-    case 'time':
-    case 'timestamp':
-    case 'datetime':
-    case 'json':
-      return 'TEXT';
-    case 'blob':
-    case 'binary':
-      return 'BLOB';
-    case 'boolean':
-    case 'bool':
-      return 'INTEGER'; // SQLite doesn't have a boolean type, use INTEGER
+    case "int":
+    case "integer":
+    case "bigint":
+    case "smallint":
+    case "tinyint":
+      return "INTEGER";
+    case "float":
+    case "double":
+    case "decimal":
+    case "numeric":
+    case "real":
+      return "REAL";
+    case "char":
+    case "varchar":
+    case "text":
+    case "string":
+    case "date":
+    case "time":
+    case "timestamp":
+    case "datetime":
+    case "json":
+      return "TEXT";
+    case "blob":
+    case "binary":
+      return "BLOB";
+    case "boolean":
+    case "bool":
+      return "INTEGER"; // SQLite doesn't have a boolean type, use INTEGER
     default:
       // For complex types or unknown types, default to TEXT
-      return 'TEXT';
+      return "TEXT";
   }
 };
 
 /**
  * Delete a sandbox database
  */
-export const deleteSandboxDatabase = async (sandboxId: string): Promise<void> => {
+export const deleteSandboxDatabase = async (
+  sandboxId: string
+): Promise<void> => {
   try {
     // Get sandbox info
     const sandbox = await prisma.sandboxDb.findUnique({
@@ -573,7 +656,7 @@ export const deleteSandboxDatabase = async (sandboxId: string): Promise<void> =>
     });
 
     if (!sandbox) {
-      throw new ApiError(404, 'Sandbox database not found');
+      throw new ApiError(404, "Sandbox database not found");
     }
 
     // Drop the sandbox database
@@ -581,17 +664,21 @@ export const deleteSandboxDatabase = async (sandboxId: string): Promise<void> =>
       case DatabaseType.POSTGRESQL:
         await dropPostgresSandboxDb(sandbox.name);
         break;
-      
+
       case DatabaseType.MYSQL:
         await dropMySqlSandboxDb(sandbox.name);
         break;
-      
+
       case DatabaseType.SQLITE:
-        await dropSqliteSandboxDb(sandbox.connectionString || `${sandbox.name}.db`);
+        await dropSqliteSandboxDb(
+          sandbox.connectionString || `${sandbox.name}.db`
+        );
         break;
-      
+
       default:
-        logger.warn(`No drop method for sandbox type ${sandbox.connection.type}`);
+        logger.warn(
+          `No drop method for sandbox type ${sandbox.connection.type}`
+        );
     }
 
     // Delete the sandbox record
@@ -602,7 +689,10 @@ export const deleteSandboxDatabase = async (sandboxId: string): Promise<void> =>
     logger.info(`Deleted sandbox database ${sandbox.name}`);
   } catch (error: any) {
     logger.error(`Error deleting sandbox database: ${error.message}`);
-    throw new ApiError(500, `Failed to delete sandbox database: ${error.message}`);
+    throw new ApiError(
+      500,
+      `Failed to delete sandbox database: ${error.message}`
+    );
   }
 };
 
@@ -617,7 +707,7 @@ const dropPostgresSandboxDb = async (dbName: string): Promise<void> => {
     port: SANDBOX_DEFAULTS.port,
     username: SANDBOX_DEFAULTS.username,
     password: SANDBOX_DEFAULTS.password,
-    database: 'postgres', // Connect to default database
+    database: "postgres", // Connect to default database
   };
 
   const adminConnId = `admin_conn_${Date.now()}`;
@@ -636,7 +726,10 @@ const dropPostgresSandboxDb = async (dbName: string): Promise<void> => {
     );
 
     // Drop the database
-    await databaseService.executeQuery(adminConnId, `DROP DATABASE IF EXISTS ${dbName};`);
+    await databaseService.executeQuery(
+      adminConnId,
+      `DROP DATABASE IF EXISTS ${dbName};`
+    );
   } finally {
     await databaseService.closeDatabaseConnection(adminConnId);
   }
@@ -660,7 +753,10 @@ const dropMySqlSandboxDb = async (dbName: string): Promise<void> => {
 
   try {
     // Drop the database
-    await databaseService.executeQuery(adminConnId, `DROP DATABASE IF EXISTS ${dbName};`);
+    await databaseService.executeQuery(
+      adminConnId,
+      `DROP DATABASE IF EXISTS ${dbName};`
+    );
   } finally {
     await databaseService.closeDatabaseConnection(adminConnId);
   }
@@ -671,7 +767,7 @@ const dropMySqlSandboxDb = async (dbName: string): Promise<void> => {
  */
 const dropSqliteSandboxDb = async (dbPath: string): Promise<void> => {
   // For in-memory SQLite, nothing to do
-  if (dbPath === ':memory:') return;
+  if (dbPath === ":memory:") return;
   // For file-based, delete the file
   if (fs.existsSync(dbPath)) {
     fs.unlinkSync(dbPath);
@@ -681,7 +777,9 @@ const dropSqliteSandboxDb = async (dbPath: string): Promise<void> => {
 /**
  * Get the status of a sandbox database
  */
-export const getSandboxStatus = async (connectionId: string): Promise<SandboxStatus | null> => {
+export const getSandboxStatus = async (
+  connectionId: string
+): Promise<SandboxStatus | null> => {
   try {
     const sandbox = await prisma.sandboxDb.findUnique({
       where: { connectionId },
@@ -706,4 +804,4 @@ export const getSandboxStatus = async (connectionId: string): Promise<SandboxSta
     logger.error(`Error getting sandbox status: ${error.message}`);
     throw new ApiError(500, `Failed to get sandbox status: ${error.message}`);
   }
-}; 
+};

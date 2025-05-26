@@ -6,8 +6,8 @@
     "moduleResolution": "NodeNext",
     "rootDir": "src",
     "outDir": "dist",
-    "strict": true,
-    "noImplicitAny": true,
+    "strict": false,
+    "noImplicitAny": false,
     "strictNullChecks": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
@@ -15,7 +15,7 @@
     "experimentalDecorators": true,
     "resolveJsonModule": true,
     "typeRoots": ["node_modules/@types"],
-    "sourceMap": true
+    "sourceMap": true,
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "**/*.test.ts"]

@@ -29,8 +29,37 @@ export async function executeHybridQuery({
   // 2. Detect query type
   const queryType = getQueryType(sqlQuery);
 
-  // 3. If DQL, run on source DB
-  if (queryType === "DQL") {
+  // Run DQL, on sanbox DB if it exists, otherwise on source DB
+  if (queryType === "DQL" && connection.sandboxDbId) {
+    // Check if sandbox DB exists
+    const sandbox = await prisma.sandboxDb.findUnique({
+      where: { id: connection.sandboxDbId },
+    });
+    if (sandbox) {
+      // Connect to sandbox DB
+      const sandboxConfig: DatabaseConfig = {
+        type: connection.type,
+        host: sandbox.host || connection.host,
+        port: sandbox.port || connection.port,
+        username: sandbox.username || connection.username,
+        password: sandbox.password || connection.password,
+        database: sandbox.name,
+        connectionString: sandbox.connectionString ?? undefined,
+        options: connection.options,
+      };
+      const sandboxConnId = `sandbox_${sandbox.id}`;
+      await databaseService.connectToDatabase(sandboxConnId, sandboxConfig);
+      try {
+        return await databaseService.executeQuery(sandboxConnId, sqlQuery);
+      } finally {
+        await databaseService.closeDatabaseConnection(sandboxConnId);
+      }
+    }
+    // If no sandbox DB, fall through to source DB logic
+  } else if (queryType === "DQL" && !connection.sandboxDbId) {
+    console.log(
+      `No sandbox DB for connection ${connection.id}, running query on source DB`
+    );
     const config: DatabaseConfig = {
       type: connection.type,
       host: connection.host,
@@ -47,10 +76,7 @@ export async function executeHybridQuery({
     } finally {
       await databaseService.closeDatabaseConnection(connection.id);
     }
-  }
-
-  // 4. If DML, run on sandbox DB (copy data if needed)
-  if (queryType === "DML") {
+  } else if (queryType === "DML") {
     // Find or create sandbox DB for this connection
     console.log(`Checking sandbox DB for connection ${connection.id}`);
     let sandbox = await prisma.sandboxDb.findUnique({

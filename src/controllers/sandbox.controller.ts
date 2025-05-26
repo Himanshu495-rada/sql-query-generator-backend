@@ -1,8 +1,8 @@
-import { Request, Response, NextFunction } from 'express';
-import { prisma } from '../index';
-import { ApiError } from '../middleware/errorHandler';
-import * as sandboxService from '../services/sandbox.service';
-import * as databaseService from '../services/database.service';
+import { Request, Response, NextFunction } from "express";
+import { prisma } from "../index";
+import { ApiError } from "../middleware/errorHandler";
+import * as sandboxService from "../services/sandbox.service";
+import * as databaseService from "../services/database.service";
 
 // Get sandbox status for a connection
 export const getSandboxStatus = async (
@@ -13,9 +13,9 @@ export const getSandboxStatus = async (
   try {
     const userId = req.user?.id;
     const connectionId = req.params.connectionId;
-    
+
     if (!userId) {
-      throw new ApiError(401, 'Authentication required');
+      throw new ApiError(401, "Authentication required");
     }
 
     // Check if connection exists and belongs to the user
@@ -28,7 +28,7 @@ export const getSandboxStatus = async (
     });
 
     if (!connection) {
-      throw new ApiError(404, 'Connection not found');
+      throw new ApiError(404, "Connection not found");
     }
 
     // Get sandbox status
@@ -36,7 +36,7 @@ export const getSandboxStatus = async (
 
     res.status(200).json({
       success: true,
-      data: { 
+      data: {
         status,
         hasSandbox: status !== null,
       },
@@ -55,9 +55,9 @@ export const createSandbox = async (
   try {
     const userId = req.user?.id;
     const connectionId = req.params.connectionId;
-    
+
     if (!userId) {
-      throw new ApiError(401, 'Authentication required');
+      throw new ApiError(401, "Authentication required");
     }
 
     // Check if connection exists and belongs to the user
@@ -70,7 +70,7 @@ export const createSandbox = async (
     });
 
     if (!connection) {
-      throw new ApiError(404, 'Connection not found');
+      throw new ApiError(404, "Connection not found");
     }
 
     // Check if sandbox already exists
@@ -82,7 +82,7 @@ export const createSandbox = async (
       return res.status(200).json({
         success: true,
         data: { sandboxDb: existingSandbox },
-        message: 'Sandbox already exists for this connection',
+        message: "Sandbox already exists for this connection",
       });
     }
 
@@ -104,7 +104,11 @@ export const createSandbox = async (
     await databaseService.closeDatabaseConnection(connectionId);
 
     // Create sandbox
-    const sandboxDb = await sandboxService.createSandboxDatabase(connectionId, config, schema);
+    const sandboxDb = await sandboxService.createSandboxDatabase(
+      connectionId,
+      config,
+      schema
+    );
 
     res.status(201).json({
       success: true,
@@ -124,9 +128,9 @@ export const resetSandbox = async (
   try {
     const userId = req.user?.id;
     const sandboxId = req.params.sandboxId;
-    
+
     if (!userId) {
-      throw new ApiError(401, 'Authentication required');
+      throw new ApiError(401, "Authentication required");
     }
 
     // Check if sandbox exists and belongs to the user
@@ -138,7 +142,7 @@ export const resetSandbox = async (
     });
 
     if (!sandbox || sandbox.connection.userId !== userId) {
-      throw new ApiError(404, 'Sandbox not found');
+      throw new ApiError(404, "Sandbox not found");
     }
 
     // Delete the existing sandbox
@@ -164,7 +168,11 @@ export const resetSandbox = async (
     await databaseService.closeDatabaseConnection(connectionId);
 
     // Create new sandbox
-    const newSandboxDb = await sandboxService.createSandboxDatabase(connectionId, config, schema);
+    const newSandboxDb = await sandboxService.createSandboxDatabase(
+      connectionId,
+      config,
+      schema
+    );
 
     res.status(200).json({
       success: true,
@@ -184,9 +192,9 @@ export const syncSandboxSchema = async (
   try {
     const userId = req.user?.id;
     const sandboxId = req.params.sandboxId;
-    
+
     if (!userId) {
-      throw new ApiError(401, 'Authentication required');
+      throw new ApiError(401, "Authentication required");
     }
 
     // Check if sandbox exists and belongs to the user
@@ -198,7 +206,7 @@ export const syncSandboxSchema = async (
     });
 
     if (!sandbox || sandbox.connection.userId !== userId) {
-      throw new ApiError(404, 'Sandbox not found');
+      throw new ApiError(404, "Sandbox not found");
     }
 
     // Get connection config
@@ -231,9 +239,53 @@ export const syncSandboxSchema = async (
 
     res.status(200).json({
       success: true,
-      message: 'Sandbox schema updated successfully',
+      message: "Sandbox schema updated successfully",
     });
   } catch (error) {
     next(error);
   }
-}; 
+};
+
+// Delete a sandbox
+export const deleteSandbox = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = req.user?.id;
+    const sandboxId = req.params.sandboxId;
+
+    if (!userId) {
+      throw new ApiError(401, "Authentication required");
+    }
+
+    // Check if sandbox exists and belongs to the user
+    const sandbox = await prisma.sandboxDb.findUnique({
+      where: { id: sandboxId },
+      include: {
+        connection: true,
+      },
+    });
+
+    if (!sandbox || sandbox.connection.userId !== userId) {
+      throw new ApiError(404, "Sandbox not found");
+    }
+
+    // Delete the sandbox database
+    await sandboxService.deleteSandboxDatabase(sandboxId);
+
+    // Delete the sandbox record
+    await prisma.sandboxDb.delete({
+      where: { id: sandboxId },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Sandbox deleted successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+// Note: The above code assumes that the sandboxService and databaseService

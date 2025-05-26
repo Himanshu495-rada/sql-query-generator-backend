@@ -276,12 +276,16 @@ export const executeQuery = async (
     }
     // Use the hybrid query execution logic
     const connection = query.sandboxDb?.connection;
-    console.log("connection", connection);
+
     if (!connection) {
       throw new ApiError(400, "No database connection found for this query");
     }
     let result;
+
     try {
+      // Execute the hybrid query including sandbox logic
+      // Note: executeHybridQuery handles both sandbox and source DB logic
+
       result = await executeHybridQuery({
         userId,
         connection: {
@@ -308,6 +312,7 @@ export const executeQuery = async (
               ? connection.connectionString
               : undefined,
           options: connection.options,
+          sandboxDbId: query.sandboxDb?.id, // Pass sandbox ID if available
         },
         sqlQuery,
       });
