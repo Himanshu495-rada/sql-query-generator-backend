@@ -33,10 +33,8 @@ export const getDatabaseSchemaForBuilder = async (
 
     if (!connection) {
       throw new ApiError(404, "Connection not found");
-    }
-
-    // Get database schema
-    let schema = null;
+    } // Get database schema
+    let schema: any = null;
 
     if (connection.sandboxDb?.schema) {
       schema = connection.sandboxDb.schema;
@@ -60,13 +58,11 @@ export const getDatabaseSchemaForBuilder = async (
       } catch (error) {
         throw new ApiError(500, "Failed to get database schema");
       }
-    }
-
-    // Extract tables and relationships
-    const tables = schema.tables.map((table) => ({
+    } // Extract tables and relationships
+    const tables = schema.tables.map((table: any) => ({
       name: table.name,
       schema: table.schema,
-      columns: table.columns.map((col) => ({
+      columns: table.columns.map((col: any) => ({
         name: col.name,
         type: col.type,
         isPrimaryKey: col.isPrimaryKey,
@@ -259,11 +255,9 @@ const detectRelationships = (schema: any): SchemaRelationship[] => {
           // Skip the same table
           if (potentialParentTable.name === table.name) {
             continue;
-          }
-
-          // Look for a primary key that matches the naming pattern
+          } // Look for a primary key that matches the naming pattern
           const potentialPrimaryKey = potentialParentTable.columns.find(
-            (col) => col.isPrimaryKey
+            (col: any) => col.isPrimaryKey
           );
 
           if (potentialPrimaryKey) {

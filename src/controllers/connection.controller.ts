@@ -7,19 +7,11 @@ import * as databaseService from "../services/database.service";
 import * as sandboxService from "../services/sandbox.service";
 import { DatabaseType } from "@prisma/client";
 import { DATABASE_TYPES } from "../utils/types";
+import multer from "multer";
 
 // Extend Request type to include file from multer
 interface MulterRequest extends Request {
-  file?: {
-    fieldname: string;
-    originalname: string;
-    encoding: string;
-    mimetype: string;
-    destination: string;
-    filename: string;
-    path: string;
-    size: number;
-  };
+  file?: Express.Multer.File;
 }
 
 // Get all connections for the authenticated user
@@ -523,13 +515,11 @@ export const getDatabaseSchema = async (
       const schema = await databaseService.getDatabaseSchema(connectionId);
 
       // Close the connection
-      await databaseService.closeDatabaseConnection(connectionId);
-
-      // If we have a sandbox, update its cached schema
+      await databaseService.closeDatabaseConnection(connectionId); // If we have a sandbox, update its cached schema
       if (sandboxDb) {
         await prisma.sandboxDb.update({
           where: { connectionId },
-          data: { schema },
+          data: { schema: schema as any },
         });
       }
 
